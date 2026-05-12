@@ -96,7 +96,7 @@ public class DataInitializer implements CommandLineRunner {
         LeaveRequest leave = new LeaveRequest();
         leave.setStartDate(start);
         leave.setEndDate(end);
-        leave.setReason(reason);
+        leave.setDescription(reason);
         leave.setStatus(status);
         leave.setEmployee(emp);
         leaveRequestRepository.save(leave);

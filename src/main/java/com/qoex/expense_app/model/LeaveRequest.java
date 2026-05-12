@@ -14,9 +14,13 @@ import java.time.LocalDate;
 @AllArgsConstructor
 public class LeaveRequest extends BaseEntity<Long> {
 
+    private String description;
+
+    @Column(nullable = false)
     private LocalDate startDate;
+
+    @Column(nullable = false)
     private LocalDate endDate;
-    private String reason;
 
     @Enumerated(EnumType.STRING)
     private RequestStatus status;

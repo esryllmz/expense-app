@@ -2,11 +2,11 @@ package com.qoex.expense_app.controller;
 
 import com.qoex.expense_app.core.responses.ApiResponse;
 import com.qoex.expense_app.core.utils.SecurityUtils;
-import com.qoex.expense_app.dto.request.UpdateUserRequest;
-import com.qoex.expense_app.dto.request.ChangePasswordRequest;
+import com.qoex.expense_app.dto.request.User.UpdateUserRequest;
+import com.qoex.expense_app.dto.request.User.ChangePasswordRequest;
 import com.qoex.expense_app.dto.response.UserResponseDto;
 import com.qoex.expense_app.service.IUserService;
-import jakarta.validation.Valid; // BU IMPORT ŞART
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;

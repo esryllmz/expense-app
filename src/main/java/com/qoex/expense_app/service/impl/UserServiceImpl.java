@@ -3,8 +3,8 @@ package com.qoex.expense_app.service.impl;
 import com.qoex.expense_app.core.exceptions.BusinessException;
 import com.qoex.expense_app.core.responses.ApiResponse;
 import com.qoex.expense_app.service.rules.UserBusinessRules; // Paketin doğru olduğundan emin ol
-import com.qoex.expense_app.dto.request.UpdateUserRequest;
-import com.qoex.expense_app.dto.request.ChangePasswordRequest;
+import com.qoex.expense_app.dto.request.User.UpdateUserRequest;
+import com.qoex.expense_app.dto.request.User.ChangePasswordRequest;
 import com.qoex.expense_app.dto.response.UserResponseDto;
 import com.qoex.expense_app.model.User;
 import com.qoex.expense_app.repository.UserRepository;

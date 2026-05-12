@@ -15,7 +15,7 @@ public class ApiResponse<T> {
     private int statusCode;
     private List<String> errors;
 
-    // .NET'teki Success metodları gibi yardımcı statik metodlar
+    // --- Başarılı İşlemler İçin ---
     public static <T> ApiResponse<T> success(T data, String message, int statusCode) {
         return ApiResponse.<T>builder()
                 .success(true)
@@ -25,6 +25,10 @@ public class ApiResponse<T> {
                 .build();
     }
 
+    // --- Hata İşlemleri İçin (Overloaded Metotlar) ---
+
+    // 1. Liste halinde detaylı hata mesajı dönmek için (.NET'teki detaylı
+    // validasyon hataları gibi)
     public static <T> ApiResponse<T> error(String message, int statusCode, List<String> errors) {
         return ApiResponse.<T>builder()
                 .success(false)
@@ -34,4 +38,14 @@ public class ApiResponse<T> {
                 .build();
     }
 
+    // 2. Sadece genel bir mesaj ve status kodu dönmek için
+    // (GlobalExceptionHandler'daki hatayı çözen metot)
+    public static <T> ApiResponse<T> error(String message, int statusCode) {
+        return ApiResponse.<T>builder()
+                .success(false)
+                .message(message)
+                .statusCode(statusCode)
+                .errors(null)
+                .build();
+    }
 }

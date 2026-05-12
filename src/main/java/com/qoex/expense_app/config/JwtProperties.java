@@ -1,4 +1,4 @@
-package com.qoex.expense_app.core.security;
+package com.qoex.expense_app.config;
 
 import lombok.Getter;
 import lombok.Setter;

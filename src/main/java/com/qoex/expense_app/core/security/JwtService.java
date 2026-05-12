@@ -8,6 +8,8 @@ import io.jsonwebtoken.security.Keys;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import com.qoex.expense_app.config.JwtProperties;
+
 import java.security.Key;
 import java.util.Date;
 import java.util.HashMap;

@@ -1,12 +1,12 @@
 package com.qoex.expense_app.service.impl;
 
+import com.qoex.expense_app.config.JwtProperties;
 import com.qoex.expense_app.core.enums.UserRole;
 import com.qoex.expense_app.core.responses.ApiResponse;
 import com.qoex.expense_app.service.rules.UserBusinessRules; // Eklendi
-import com.qoex.expense_app.core.security.JwtProperties;
 import com.qoex.expense_app.core.security.JwtService;
-import com.qoex.expense_app.dto.request.LoginRequestDto; // İsimler düzeltildi
-import com.qoex.expense_app.dto.request.RegisterRequestDto;
+import com.qoex.expense_app.dto.request.User.LoginRequestDto; // İsimler düzeltildi
+import com.qoex.expense_app.dto.request.User.RegisterRequestDto;
 import com.qoex.expense_app.dto.response.TokenResponseDto;
 import com.qoex.expense_app.core.exceptions.BusinessException;
 import com.qoex.expense_app.model.User;
