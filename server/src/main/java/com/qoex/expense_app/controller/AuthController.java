@@ -20,7 +20,6 @@ public class AuthController {
 
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<Void>> register(@Valid @RequestBody RegisterRequestDto request) {
-        // Not: IAuthenticationService içinde register metodunun olduğunu varsayıyoruz
         return ResponseEntity.ok(authService.register(request));
     }
 
@@ -32,9 +31,6 @@ public class AuthController {
     @PostMapping("/refresh-token")
     public ResponseEntity<ApiResponse<TokenResponseDto>> refreshToken(
             @CookieValue(name = "refreshToken", required = false) String refreshToken) {
-
-        // Eğer cookie yoksa veya boşsa direkt hata fırlatabilir veya servise
-        // bırakabilirsin
         return ResponseEntity.ok(authService.refreshToken(refreshToken));
     }
 
