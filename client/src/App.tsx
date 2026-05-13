@@ -1,21 +1,12 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import AuthPage from './pages/AuthPage';
-import Dashboard from './pages/Dashboard';
+import { AppRouter } from "../src/routes/AppRouter";
 
+/**
+ * App: Artık sadece yönlendirme katmanından sorumludur.
+ * Tüm sağlayıcılar AppProvider üzerinden yönetilmektedir.
+ */
 function App() {
-  const isAuthenticated = !!localStorage.getItem('token');
-
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<AuthPage />} />
-        <Route 
-          path="/dashboard" 
-          element={isAuthenticated ? <Dashboard /> : <Navigate to="/" />} 
-        />
-        <Route path="*" element={<Navigate to="/" />} />
-      </Routes>
-    </BrowserRouter>
+    <AppRouter />
   );
 }
 

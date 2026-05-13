@@ -4,10 +4,10 @@ import com.qoex.expense_app.core.enums.RequestStatus;
 import com.qoex.expense_app.core.enums.UserRole;
 import com.qoex.expense_app.core.security.HashingHelper;
 import com.qoex.expense_app.model.Expense;
-import com.qoex.expense_app.model.LeaveRequest;
+import com.qoex.expense_app.model.Leave;
 import com.qoex.expense_app.model.User;
 import com.qoex.expense_app.repository.ExpenseRepository;
-import com.qoex.expense_app.repository.LeaveRequestRepository;
+import com.qoex.expense_app.repository.LeaveRepository;
 import com.qoex.expense_app.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
@@ -22,7 +22,7 @@ public class DataInitializer implements CommandLineRunner {
 
     private final UserRepository userRepository;
     private final ExpenseRepository expenseRepository;
-    private final LeaveRequestRepository leaveRequestRepository;
+    private final LeaveRepository leaveRepository;
 
     @Override
     public void run(String... args) {
@@ -93,12 +93,12 @@ public class DataInitializer implements CommandLineRunner {
     }
 
     private void saveLeave(LocalDate start, LocalDate end, String reason, RequestStatus status, User emp) {
-        LeaveRequest leave = new LeaveRequest();
+        Leave leave = new Leave();
         leave.setStartDate(start);
         leave.setEndDate(end);
         leave.setDescription(reason);
         leave.setStatus(status);
         leave.setEmployee(emp);
-        leaveRequestRepository.save(leave);
+        leaveRepository.save(leave);
     }
 }
