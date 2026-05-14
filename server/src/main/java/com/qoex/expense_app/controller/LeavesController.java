@@ -35,14 +35,14 @@ public class LeavesController {
     }
 
     @GetMapping("/subordinates")
-    @PreAuthorize("hasAnyRole('MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('GM', 'TEAM_LEADER')")
     public ResponseEntity<ApiResponse<List<LeaveResponseDto>>> getSubordinateLeaves() {
         Long currentManagerId = SecurityUtils.getCurrentUserId();
         return ResponseEntity.ok(leaveRequestService.getSubordinateLeaves(currentManagerId));
     }
 
     @PatchMapping("/{id}/status")
-    @PreAuthorize("hasAnyRole('MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('GM', 'TEAM_LEADER')")
     public ResponseEntity<ApiResponse<Void>> updateStatus(
             @PathVariable Long id,
             @Valid @RequestBody UpdateLeaveStatusRequest request) {

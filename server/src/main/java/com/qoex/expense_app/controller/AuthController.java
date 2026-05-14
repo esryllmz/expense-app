@@ -1,7 +1,9 @@
 package com.qoex.expense_app.controller;
 
 import com.qoex.expense_app.core.responses.ApiResponse;
+import com.qoex.expense_app.core.utils.SecurityUtils;
 import com.qoex.expense_app.dto.request.User.LoginRequestDto;
+import com.qoex.expense_app.dto.request.User.RefreshTokenRequestDto;
 import com.qoex.expense_app.dto.request.User.RegisterRequestDto;
 import com.qoex.expense_app.dto.response.TokenResponseDto;
 import com.qoex.expense_app.service.IAuthenticationService;
@@ -20,7 +22,7 @@ public class AuthController {
 
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<Void>> register(@Valid @RequestBody RegisterRequestDto request) {
-        return ResponseEntity.ok(authService.register(request));
+        return ResponseEntity.status(201).body(authService.register(request));
     }
 
     @PostMapping("/login")
@@ -30,13 +32,13 @@ public class AuthController {
 
     @PostMapping("/refresh-token")
     public ResponseEntity<ApiResponse<TokenResponseDto>> refreshToken(
-            @CookieValue(name = "refreshToken", required = false) String refreshToken) {
-        return ResponseEntity.ok(authService.refreshToken(refreshToken));
+            @Valid @RequestBody RefreshTokenRequestDto request) {
+        return ResponseEntity.ok(authService.refreshToken(request.refreshToken()));
     }
 
     @PostMapping("/logout")
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<Void>> logout() {
-        return ResponseEntity.ok(authService.logout());
+        return ResponseEntity.ok(authService.logout(SecurityUtils.getCurrentUserId()));
     }
 }

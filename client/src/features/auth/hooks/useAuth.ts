@@ -1,64 +1,57 @@
-import { useMutation } from "@tanstack/react-query";
-import { useDispatch } from "react-redux";
-import { authService } from "../services/authservice";
-import { setCredentials, logout as logoutAction } from "../store/authSlice";
-import { useNavigate } from "react-router-dom";
+import { useMutation } from '@tanstack/react-query';
+import { useDispatch } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
+import { authService } from '../services/authservice';
+import { setCredentials, logout as logoutAction } from '../store/authSlice';
+import type { AuthResponse, LoginRequest, RegisterRequest } from '../types/authtypes';
+import type { ApiResponse, NoData } from '../../../core/types/ApiResponse';
 
 export const useAuth = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
-  // Login Mutasyonu
-  const loginMutation = useMutation({
-    mutationFn: (credentials: any) => authService.login(credentials),
+  const loginMutation = useMutation<ApiResponse<AuthResponse>, unknown, LoginRequest>({
+    mutationFn: (credentials) => authService.login(credentials),
     onSuccess: (response) => {
       if (response.success && response.data) {
-        // Tokenları kaydet
-        localStorage.setItem("accessToken", response.data.accessToken);
-        if (response.data.refreshToken) {
-          localStorage.setItem("refreshToken", response.data.refreshToken);
-        }
+        localStorage.setItem('accessToken', response.data.accessToken);
+        localStorage.setItem('refreshToken', response.data.refreshToken);
+        localStorage.setItem('user', JSON.stringify(response.data.user));
 
-        // Redux State'ini güncelle
-        dispatch(setCredentials({
-          user: response.data.user,
-          accessToken: response.data.accessToken
-        }));
+        dispatch(
+          setCredentials({
+            user: response.data.user,
+            accessToken: response.data.accessToken,
+          })
+        );
 
-        // Dashboard'a yönlendir
-        navigate("/dashboard");
+        navigate('/dashboard');
       }
     },
   });
 
-  // Register Mutasyonu
-  const registerMutation = useMutation({
-    mutationFn: (data: any) => authService.register(data),
-    // onSuccess yönlendirmesini AuthPage içinden yapacağız ki formu temizleyip Login ekranına geçebilsin
+  const registerMutation = useMutation<ApiResponse<NoData>, unknown, RegisterRequest>({
+    mutationFn: (data) => authService.register(data),
   });
 
-  // Çıkış Mutasyonu
   const logout = async () => {
     try {
-      // Backend'deki token'ı karalisteye (blacklist) almak için
-      await authService.logout(); 
+      await authService.logout();
     } catch (error) {
-      console.error("Logout API error:", error);
+      console.error('Logout API error:', error);
     } finally {
-      // API hata verse bile frontend'de oturumu mutlaka kapat
       dispatch(logoutAction());
-      navigate("/");
+      navigate('/');
     }
   };
 
   return {
-    // mutateAsync sayesinde hataları (try-catch) AuthPage içinde yakalayabiliriz
-    login: loginMutation.mutateAsync, 
+    login: loginMutation.mutateAsync,
     isLoginLoading: loginMutation.isPending,
-    
+
     register: registerMutation.mutateAsync,
     isRegisterLoading: registerMutation.isPending,
-    
+
     logout,
   };
 };

@@ -6,6 +6,8 @@ import jakarta.persistence.*;
 import lombok.*;
 import java.time.LocalDate;
 
+import org.hibernate.annotations.Nationalized;
+
 @Entity
 @Table(name = "leaves")
 @Getter
@@ -14,6 +16,8 @@ import java.time.LocalDate;
 @AllArgsConstructor
 public class Leave extends BaseEntity<Long> {
 
+    @Nationalized
+    @Column(nullable = false, length = 500)
     private String description;
 
     @Column(nullable = false)
@@ -23,7 +27,8 @@ public class Leave extends BaseEntity<Long> {
     private LocalDate endDate;
 
     @Enumerated(EnumType.STRING)
-    private RequestStatus status;
+    @Column(nullable = false)
+    private RequestStatus status = RequestStatus.PENDING;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)

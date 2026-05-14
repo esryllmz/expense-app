@@ -1,11 +1,12 @@
-export type UserRole = 'ADMIN' | 'MANAGER' | 'EMPLOYEE';
+export type UserRole = 'ROLE_GM' | 'ROLE_TEAM_LEADER' | 'ROLE_EMPLOYEE';
 
 export interface User {
-  id: string;
+  id: number;
   email: string;
   firstName: string;
   lastName: string;
   role: UserRole;
+  managerName?: string;
 }
 
 export interface AuthResponse {
@@ -19,7 +20,6 @@ export interface LoginRequest {
   password: string;
 }
 
-// Backend'deki register endpoint'ine uygun request tipi
 export interface RegisterRequest {
   email: string;
   password: string;

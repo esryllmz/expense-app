@@ -8,23 +8,24 @@ import org.springframework.transaction.event.TransactionalEventListener;
 
 @Component
 @Slf4j
-public class ExpenseEventListener {
+public class LeaveEventListener {
 
     @Async
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
-    public void handleExpenseCreatedEvent(ExpenseCreatedEvent event) {
+    public void handleLeaveCreatedEvent(LeaveCreatedEvent event) {
         if (event.managerId() == null) {
             log.info(
-                    "Bildirim gönderilmedi. Çalışanın yöneticisi bulunamadı. EmployeeId: {}, ExpenseId: {}",
+                    "Bildirim gönderilmedi. Çalışanın yöneticisi bulunamadı. EmployeeId: {}, LeaveId: {}",
                     event.employeeId(),
-                    event.expenseId());
+                    event.leaveId());
             return;
         }
 
         log.info(
-                "BİLDİRİM GÖNDERİLDİ: Sayın {}, personeliniz {} yeni bir masraf talebi oluşturdu. Tutar: {} TL",
+                "BİLDİRİM GÖNDERİLDİ: Sayın {}, personeliniz {} yeni bir izin talebi oluşturdu. Tarih: {} - {}",
                 event.managerName(),
                 event.employeeName(),
-                event.amount());
+                event.startDate(),
+                event.endDate());
     }
 }

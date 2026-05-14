@@ -6,6 +6,8 @@ import jakarta.persistence.*;
 import lombok.*;
 import java.math.BigDecimal;
 
+import org.hibernate.annotations.Nationalized;
+
 @Entity
 @Table(name = "expenses")
 @Getter
@@ -14,11 +16,16 @@ import java.math.BigDecimal;
 @AllArgsConstructor
 public class Expense extends BaseEntity<Long> {
 
+    @Nationalized
+    @Column(nullable = false, length = 500)
     private String description;
+
+    @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal amount;
 
     @Enumerated(EnumType.STRING)
-    private RequestStatus status;
+    @Column(nullable = false)
+    private RequestStatus status = RequestStatus.PENDING;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)

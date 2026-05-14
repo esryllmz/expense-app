@@ -14,4 +14,5 @@ public interface IExpenseService {
     ApiResponse<List<ExpenseResponseDto>> getSubordinateExpenses(Long managerId);
 
     ApiResponse<Void> updateStatus(Long expenseId, UpdateExpenseStatusRequest request, Long managerId);
+
 }

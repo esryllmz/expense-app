@@ -1,6 +1,13 @@
 package com.qoex.expense_app.core.events;
 
-import com.qoex.expense_app.model.Leave;
+import java.time.LocalDate;
 
-public record LeaveCreatedEvent(Leave leaveRequest) {
+public record LeaveCreatedEvent(
+                Long leaveId,
+                Long employeeId,
+                String employeeName,
+                Long managerId,
+                String managerName,
+                LocalDate startDate,
+                LocalDate endDate) {
 }

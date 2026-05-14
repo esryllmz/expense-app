@@ -1,5 +1,7 @@
 package com.qoex.expense_app.core.middlewares;
 
+import com.qoex.expense_app.core.constants.Messages;
+import com.qoex.expense_app.core.exceptions.BaseException;
 import com.qoex.expense_app.core.responses.ApiResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
@@ -7,56 +9,43 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
-import com.qoex.expense_app.core.exceptions.BusinessException;
-import com.qoex.expense_app.core.exceptions.ForbiddenException;
-import com.qoex.expense_app.core.exceptions.NotFoundException;
-
 import java.util.HashMap;
 import java.util.Map;
 
-@RestControllerAdvice // Tüm controller'lardaki hataları merkezi olarak yakalar
+@RestControllerAdvice
 @Slf4j
 public class GlobalExceptionHandler {
 
-    // 1. İş Kuralları Hataları (BusinessException)
-    @ExceptionHandler(BusinessException.class)
-    public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException exception) {
-        log.error("İş Kuralı İhlali: {}", exception.getMessage());
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ApiResponse.error(exception.getMessage(), 400));
-    }
+        // 1. Tüm Custom Exceptionlarımızı (BaseException'dan türeyenler) tek yerden
+        // yakalar
+        @ExceptionHandler(BaseException.class)
+        public ResponseEntity<ApiResponse<Void>> handleBaseException(BaseException ex) {
+                log.error("Uygulama Hatası: {} | Durum: {}", ex.getMessage(), ex.getStatus());
+                return ResponseEntity
+                                .status(ex.getStatus())
+                                .body(ApiResponse.error(ex.getMessage(), ex.getStatus().value()));
+        }
 
-    // 2. Kayıt Bulunamadı Hataları (NotFoundException)
-    @ExceptionHandler(NotFoundException.class)
-    public ResponseEntity<ApiResponse<Void>> handleNotFoundException(NotFoundException exception) {
-        return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(ApiResponse.error(exception.getMessage(), 404));
-    }
+        // 2. Validasyon Hataları (Daha şık bir Map yapısıyla)
+        @ExceptionHandler(MethodArgumentNotValidException.class)
+        public ResponseEntity<ApiResponse<Map<String, String>>> handleValidationException(
+                        MethodArgumentNotValidException ex) {
+                Map<String, String> errors = new HashMap<>();
+                ex.getBindingResult().getFieldErrors()
+                                .forEach(error -> errors.put(error.getField(), error.getDefaultMessage()));
 
-    // 3. Yetkisiz Erişim (Forbidden/Authorization)
-    @ExceptionHandler(ForbiddenException.class)
-    public ResponseEntity<ApiResponse<Void>> handleForbiddenException(ForbiddenException exception) {
-        return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                .body(ApiResponse.error(exception.getMessage(), 403));
-    }
+                log.warn("Validasyon Hatası: {}", errors);
+                return ResponseEntity
+                                .status(HttpStatus.BAD_REQUEST)
+                                .body(ApiResponse.errorData(errors, Messages.VALIDATION_ERROR, 400));
+        }
 
-    // 4. Validasyon Hataları (@Valid - @NotBlank vb.)
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<ApiResponse<Map<String, String>>> handleValidationException(
-            MethodArgumentNotValidException exception) {
-        Map<String, String> errors = new HashMap<>();
-        exception.getBindingResult().getFieldErrors()
-                .forEach(error -> errors.put(error.getField(), error.getDefaultMessage()));
-
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(ApiResponse.success(errors, "Validasyon hatası oluştu.", 400));
-    }
-
-    // 5. Beklenmedik Genel Hatalar
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<ApiResponse<Void>> handleGeneralException(Exception exception) {
-        log.error("Sistem Hatası: ", exception);
-        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiResponse.error("Beklenmedik bir sistem hatası oluştu.", 500));
-    }
+        // 3. Runtime/Sistem Hataları (En genel hata)
+        @ExceptionHandler(Exception.class)
+        public ResponseEntity<ApiResponse<Void>> handleGeneralException(Exception ex) {
+                log.error("KRİTİK SİSTEM HATASI: ", ex);
+                return ResponseEntity
+                                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                                .body(ApiResponse.error(Messages.SYSTEM_ERROR, 500));
+        }
 }

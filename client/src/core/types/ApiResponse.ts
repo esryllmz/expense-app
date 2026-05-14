@@ -3,7 +3,7 @@ export interface ApiResponse<T> {
   message: string;
   data: T | null;
   statusCode: number;
-  errors?: string[];
+  errors?: string[] | Record<string, string>;
 }
 
 export type NoData = null;

@@ -8,6 +8,8 @@ import lombok.*;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import org.hibernate.annotations.Nationalized;
+
 @Entity
 @Table(name = "users")
 @Getter
@@ -16,14 +18,22 @@ import java.util.List;
 @AllArgsConstructor
 public class User extends BaseEntity<Long> {
 
+    @Nationalized
+    @Column(nullable = false, length = 50)
     private String firstName;
+
+    @Nationalized
+    @Column(nullable = false, length = 50)
     private String lastName;
 
-    @Column(unique = true)
+    @Column(nullable = false, unique = true, length = 150)
     private String email;
+
+    @Column(nullable = false)
     private String password;
 
     @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
     private UserRole role;
 
     @ManyToOne(fetch = FetchType.LAZY)

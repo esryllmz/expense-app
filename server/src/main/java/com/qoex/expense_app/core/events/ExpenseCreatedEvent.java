@@ -1,10 +1,14 @@
 package com.qoex.expense_app.core.events;
 
-import com.qoex.expense_app.model.Expense;
-
 /**
  * Record yapısı sayesinde 'expense()' metodu
  * otomatik olarak oluşturulur ve doldurulur.
  */
-public record ExpenseCreatedEvent(Expense expense) {
+public record ExpenseCreatedEvent(
+        Long expenseId,
+        Long employeeId,
+        String employeeName,
+        Long managerId,
+        String managerName,
+        java.math.BigDecimal amount) {
 }

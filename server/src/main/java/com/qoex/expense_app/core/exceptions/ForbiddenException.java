@@ -1,7 +1,9 @@
 package com.qoex.expense_app.core.exceptions;
 
-public class ForbiddenException extends RuntimeException {
+import org.springframework.http.HttpStatus;
+
+public class ForbiddenException extends BaseException {
     public ForbiddenException(String message) {
-        super(message);
+        super(message, HttpStatus.FORBIDDEN); // 403
     }
 }

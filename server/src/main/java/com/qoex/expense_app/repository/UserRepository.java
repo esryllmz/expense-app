@@ -9,7 +9,6 @@ import org.springframework.stereotype.Repository;
 
 @Repository
 public interface UserRepository extends JpaRepository<User, Long> {
-    // Sadece interface yeterli, Spring tüm metodları runtime'da enjekte eder.
     Optional<User> findByEmail(String email);
 
     Optional<User> findByRefreshToken(String refreshToken);

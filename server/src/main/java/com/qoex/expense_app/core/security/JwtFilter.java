@@ -22,6 +22,20 @@ public class JwtFilter extends OncePerRequestFilter {
 
     private final JwtService jwtService;
 
+    /**
+     * Auth endpointleri public olduğu için JWT filtresinden geçirme.
+     * Böylece eski/bozuk token localStorage'da kalsa bile login/register 403'e
+     * düşmez.
+     */
+    @Override
+    protected boolean shouldNotFilter(HttpServletRequest request) {
+        String path = request.getServletPath();
+
+        return path.startsWith("/api/v1/auth/login")
+                || path.startsWith("/api/v1/auth/register")
+                || path.startsWith("/api/v1/auth/refresh-token");
+    }
+
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain)
             throws ServletException, IOException {
@@ -33,35 +47,32 @@ public class JwtFilter extends OncePerRequestFilter {
             return;
         }
 
-        String jwt = authHeader.substring(7);
-        String userEmail = jwtService.extractEmail(jwt);
+        try {
+            String jwt = authHeader.substring(7);
+            String userEmail = jwtService.extractEmail(jwt);
 
-        // SecurityContext boşsa ve email varsa işleme başla
-        if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+            if (userEmail != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+                if (jwtService.isTokenValid(jwt)) {
+                    Long userId = jwtService.extractClaim(jwt, claims -> claims.get("userId", Long.class));
+                    String role = jwtService.extractClaim(jwt, claims -> claims.get("role", String.class));
 
-            if (jwtService.isTokenValid(jwt)) {
-                // 1. Token içinden UserId ve Role bilgilerini çekiyoruz
-                Long userId = jwtService.extractClaim(jwt, claims -> claims.get("userId", Long.class));
-                String role = jwtService.extractClaim(jwt, claims -> claims.get("role", String.class));
+                    List<SimpleGrantedAuthority> authorities = Collections
+                            .singletonList(new SimpleGrantedAuthority(role));
 
-                // 2. Rol bilgisini Spring Security'nin anlayacağı 'SimpleGrantedAuthority'
-                // formatına çeviriyoruz
-                List<SimpleGrantedAuthority> authorities = Collections.singletonList(new SimpleGrantedAuthority(role));
+                    UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(userId,
+                            null, authorities);
 
-                // 3. Token'ı oluştururken Principal olarak e-posta yerine UserId veriyoruz
-                // (SecurityUtils için)
-                UsernamePasswordAuthenticationToken authToken = new UsernamePasswordAuthenticationToken(
-                        userId,
-                        null,
-                        authorities);
+                    authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
 
-                // 4. Request detaylarını ekleyelim (IP, Session bilgisi vb.)
-                authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
-
-                // 5. Ve artık sistem bu kullanıcıyı tanıyor!
-                SecurityContextHolder.getContext().setAuthentication(authToken);
+                    SecurityContextHolder.getContext().setAuthentication(authToken);
+                }
             }
+        } catch (Exception ex) {
+            // Token bozuk/expire ise request'i authentication'sız devam ettiriyoruz.
+            // Protected endpointlerde zaten Spring Security 401/403 dönecek.
+            SecurityContextHolder.clearContext();
         }
+
         filterChain.doFilter(request, response);
     }
 }

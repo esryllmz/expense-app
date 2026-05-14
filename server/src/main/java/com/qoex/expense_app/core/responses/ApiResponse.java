@@ -48,4 +48,13 @@ public class ApiResponse<T> {
                 .errors(null)
                 .build();
     }
+
+    public static <T> ApiResponse<T> errorData(T data, String message, Integer statusCode) {
+        return ApiResponse.<T>builder()
+                .success(false) // Hata olduğu için false!
+                .message(message)
+                .data(data)
+                .statusCode(statusCode)
+                .build();
+    }
 }

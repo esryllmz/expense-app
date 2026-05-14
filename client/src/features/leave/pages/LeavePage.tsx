@@ -1,43 +1,43 @@
 import { useEffect, useState } from 'react';
-import { MoreHorizontal, Plus, Receipt } from 'lucide-react';
+import { CalendarDays, MoreHorizontal, Plus } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../../../core/store/store';
 import { apiClient } from '../../../core/api/apiClient';
-import { formatCurrency, formatDate, getStatusLabel } from '../../../core/utils/formatters';
-import { ExpenseModal } from '../components/ExpenseModal';
+import { calculateLeaveDays, formatDate, getStatusLabel } from '../../../core/utils/formatters';
+import { LeaveModal } from '../components/LeaveModal';
 import { ApprovalModal } from '../../../components/ApprovalModal';
 
-interface Expense {
+interface Leave {
   id: number;
   description: string;
-  amount: number;
+  startDate: string;
+  endDate: string;
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
   employeeFullName: string;
   employeeId: number;
-  createdDate: string;
 }
 
-export const ExpensesPage = () => {
+export const LeavePage = () => {
   const user = useSelector((state: RootState) => state.auth.user);
 
   const isManager =
     user?.role === 'ROLE_GM' || user?.role === 'ROLE_TEAM_LEADER';
 
-  const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [leaves, setLeaves] = useState<Leave[]>([]);
   const [loading, setLoading] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
 
-  const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
+  const [selectedLeave, setSelectedLeave] = useState<Leave | null>(null);
   const [approvalLoading, setApprovalLoading] = useState(false);
 
-  const loadExpenses = async () => {
+  const loadLeaves = async () => {
     setLoading(true);
 
     try {
-      const endpoint = isManager ? '/expenses/subordinates' : '/expenses/me';
-      const response = await apiClient<Expense[]>(endpoint);
+      const endpoint = isManager ? '/leaves/subordinates' : '/leaves/me';
+      const response = await apiClient<Leave[]>(endpoint);
 
-      setExpenses(response.data || []);
+      setLeaves(response.data || []);
     } catch {
       // apiClient toast gösteriyor.
     } finally {
@@ -46,24 +46,24 @@ export const ExpensesPage = () => {
   };
 
   useEffect(() => {
-    loadExpenses();
+    loadLeaves();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.role]);
 
-  const updateExpenseStatus = async (
-    expenseId: number,
+  const updateLeaveStatus = async (
+    leaveId: number,
     status: 'APPROVED' | 'REJECTED'
   ) => {
     setApprovalLoading(true);
 
     try {
-      await apiClient<null>(`/expenses/${expenseId}/status`, {
+      await apiClient<null>(`/leaves/${leaveId}/status`, {
         method: 'PATCH',
         body: JSON.stringify({ status }),
       });
 
-      setSelectedExpense(null);
-      await loadExpenses();
+      setSelectedLeave(null);
+      await loadLeaves();
     } catch {
       // apiClient toast gösteriyor.
     } finally {
@@ -75,12 +75,11 @@ export const ExpensesPage = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-black text-on-surface">Masraflar</h1>
-
+          <h1 className="text-2xl font-black text-on-surface">İzinler</h1>
           <p className="text-sm text-on-surface-variant">
             {isManager
-              ? 'Bağlı personelinizin masraf taleplerini görüntüleyebilirsiniz.'
-              : 'Kendi masraf taleplerinizi görüntüleyebilir ve yeni talep oluşturabilirsiniz.'}
+              ? 'Bağlı personelinizin izin taleplerini görüntüleyebilirsiniz.'
+              : 'Kendi izin taleplerinizi görüntüleyebilir ve yeni talep oluşturabilirsiniz.'}
           </p>
         </div>
 
@@ -90,7 +89,7 @@ export const ExpensesPage = () => {
             className="px-5 py-3 rounded-2xl bg-primary text-white font-black flex items-center gap-2 hover:bg-surface-tint"
           >
             <Plus size={18} />
-            Yeni Masraf
+            Yeni İzin
           </button>
         )}
       </div>
@@ -101,13 +100,16 @@ export const ExpensesPage = () => {
             <thead className="bg-surface-container-low">
               <tr className="text-left text-on-surface-variant">
                 <th className="px-6 py-4 font-black text-xs uppercase tracking-widest">
-                  Talep Detayı
+                  Açıklama
                 </th>
                 <th className="px-6 py-4 font-black text-xs uppercase tracking-widest">
-                  Tutar
+                  Başlangıç
                 </th>
                 <th className="px-6 py-4 font-black text-xs uppercase tracking-widest">
-                  Tarih
+                  Bitiş
+                </th>
+                <th className="px-6 py-4 font-black text-xs uppercase tracking-widest">
+                  Gün
                 </th>
                 <th className="px-6 py-4 font-black text-xs uppercase tracking-widest">
                   Durum
@@ -121,56 +123,55 @@ export const ExpensesPage = () => {
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-on-surface-variant">
+                  <td colSpan={6} className="px-6 py-8 text-center text-on-surface-variant">
                     Yükleniyor...
                   </td>
                 </tr>
               )}
 
-              {!loading && expenses.length === 0 && (
+              {!loading && leaves.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-on-surface-variant">
-                    Masraf talebi bulunamadı.
+                  <td colSpan={6} className="px-6 py-8 text-center text-on-surface-variant">
+                    İzin talebi bulunamadı.
                   </td>
                 </tr>
               )}
 
               {!loading &&
-                expenses.map((expense) => (
-                  <tr key={expense.id} className="border-t border-outline-variant/10">
+                leaves.map((leave) => (
+                  <tr key={leave.id} className="border-t border-outline-variant/10">
                     <td className="px-6 py-4">
                       <div className="flex items-start gap-3">
                         <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                          <Receipt size={18} />
+                          <CalendarDays size={18} />
                         </div>
 
                         <div>
-                          <p className="font-bold text-on-surface">{expense.description}</p>
+                          <p className="font-bold text-on-surface">{leave.description}</p>
 
                           {isManager && (
                             <p className="text-xs text-on-surface-variant mt-1">
-                              Talep sahibi: {expense.employeeFullName}
+                              Talep sahibi: {leave.employeeFullName}
                             </p>
                           )}
                         </div>
                       </div>
                     </td>
 
+                    <td className="px-6 py-4">{formatDate(leave.startDate)}</td>
+                    <td className="px-6 py-4">{formatDate(leave.endDate)}</td>
+
                     <td className="px-6 py-4 font-bold">
-                      {formatCurrency(expense.amount)}
+                      {calculateLeaveDays(leave.startDate, leave.endDate)} gün
                     </td>
 
                     <td className="px-6 py-4">
-                      {formatDate(expense.createdDate)}
-                    </td>
-
-                    <td className="px-6 py-4">
-                      <StatusBadge status={expense.status} />
+                      <StatusBadge status={leave.status} />
                     </td>
 
                     <td className="px-6 py-4 text-right">
                       <button
-                        onClick={() => setSelectedExpense(expense)}
+                        onClick={() => setSelectedLeave(leave)}
                         className="p-2 rounded-lg hover:bg-surface-container text-on-surface-variant hover:text-primary"
                         title="Detay"
                       >
@@ -184,24 +185,24 @@ export const ExpensesPage = () => {
         </div>
       </section>
 
-      <ExpenseModal
+      <LeaveModal
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
-        onSuccess={loadExpenses}
+        onSuccess={loadLeaves}
       />
 
       <ApprovalModal
-        isOpen={!!selectedExpense}
-        type="EXPENSE"
-        item={selectedExpense}
+        isOpen={!!selectedLeave}
+        type="LEAVE"
+        item={selectedLeave}
         canAct={isManager}
         loading={approvalLoading}
-        onClose={() => setSelectedExpense(null)}
+        onClose={() => setSelectedLeave(null)}
         onApprove={() =>
-          selectedExpense && updateExpenseStatus(selectedExpense.id, 'APPROVED')
+          selectedLeave && updateLeaveStatus(selectedLeave.id, 'APPROVED')
         }
         onReject={() =>
-          selectedExpense && updateExpenseStatus(selectedExpense.id, 'REJECTED')
+          selectedLeave && updateLeaveStatus(selectedLeave.id, 'REJECTED')
         }
       />
     </div>

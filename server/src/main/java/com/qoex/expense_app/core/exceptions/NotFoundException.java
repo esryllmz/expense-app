@@ -1,7 +1,9 @@
 package com.qoex.expense_app.core.exceptions;
 
-public class NotFoundException extends RuntimeException {
+import org.springframework.http.HttpStatus;
+
+public class NotFoundException extends BaseException {
     public NotFoundException(String message) {
-        super(message);
+        super(message, HttpStatus.NOT_FOUND); // 404
     }
 }

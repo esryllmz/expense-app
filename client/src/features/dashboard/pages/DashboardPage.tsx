@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
-import { MoreHorizontal, Plus, Receipt } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Clock3, FileText, MoreHorizontal, Receipt, TurkishLira } from 'lucide-react';
 import { useSelector } from 'react-redux';
 import type { RootState } from '../../../core/store/store';
 import { apiClient } from '../../../core/api/apiClient';
 import { formatCurrency, formatDate, getStatusLabel } from '../../../core/utils/formatters';
-import { ExpenseModal } from '../components/ExpenseModal';
 import { ApprovalModal } from '../../../components/ApprovalModal';
 
 interface Expense {
@@ -17,27 +17,45 @@ interface Expense {
   createdDate: string;
 }
 
-export const ExpensesPage = () => {
+interface Leave {
+  id: number;
+  description: string;
+  startDate: string;
+  endDate: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  employeeFullName: string;
+  employeeId: number;
+}
+
+const DashboardPage = () => {
+  const navigate = useNavigate();
+
   const user = useSelector((state: RootState) => state.auth.user);
 
-  const isManager =
-    user?.role === 'ROLE_GM' || user?.role === 'ROLE_TEAM_LEADER';
-
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [leaves, setLeaves] = useState<Leave[]>([]);
   const [loading, setLoading] = useState(false);
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
 
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
   const [approvalLoading, setApprovalLoading] = useState(false);
 
-  const loadExpenses = async () => {
+  const isManager =
+    user?.role === 'ROLE_GM' || user?.role === 'ROLE_TEAM_LEADER';
+
+  const loadDashboard = async () => {
     setLoading(true);
 
     try {
-      const endpoint = isManager ? '/expenses/subordinates' : '/expenses/me';
-      const response = await apiClient<Expense[]>(endpoint);
+      const expenseEndpoint = isManager ? '/expenses/subordinates' : '/expenses/me';
+      const leaveEndpoint = isManager ? '/leaves/subordinates' : '/leaves/me';
 
-      setExpenses(response.data || []);
+      const [expenseResponse, leaveResponse] = await Promise.all([
+        apiClient<Expense[]>(expenseEndpoint),
+        apiClient<Leave[]>(leaveEndpoint),
+      ]);
+
+      setExpenses(expenseResponse.data || []);
+      setLeaves(leaveResponse.data || []);
     } catch {
       // apiClient toast gösteriyor.
     } finally {
@@ -46,9 +64,21 @@ export const ExpensesPage = () => {
   };
 
   useEffect(() => {
-    loadExpenses();
+    loadDashboard();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.role]);
+
+  const totalExpenseAmount = useMemo(() => {
+    return expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+  }, [expenses]);
+
+  const pendingApprovalCount = useMemo(() => {
+    return [...expenses, ...leaves].filter((item) => item.status === 'PENDING').length;
+  }, [expenses, leaves]);
+
+  const recentExpenses = useMemo(() => {
+    return expenses.slice(0, 5);
+  }, [expenses]);
 
   const updateExpenseStatus = async (
     expenseId: number,
@@ -63,7 +93,7 @@ export const ExpensesPage = () => {
       });
 
       setSelectedExpense(null);
-      await loadExpenses();
+      await loadDashboard();
     } catch {
       // apiClient toast gösteriyor.
     } finally {
@@ -72,30 +102,44 @@ export const ExpensesPage = () => {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-black text-on-surface">Masraflar</h1>
+    <div className="space-y-8">
+      <div className="grid lg:grid-cols-3 gap-6">
+        <SummaryCard
+          title="Toplam Masraf"
+          value={formatCurrency(totalExpenseAmount)}
+          description="Listelenen masraf taleplerinin toplamı"
+          icon={<TurkishLira size={22} />}
+        />
 
-          <p className="text-sm text-on-surface-variant">
-            {isManager
-              ? 'Bağlı personelinizin masraf taleplerini görüntüleyebilirsiniz.'
-              : 'Kendi masraf taleplerinizi görüntüleyebilir ve yeni talep oluşturabilirsiniz.'}
-          </p>
-        </div>
+        <SummaryCard
+          title="Bekleyen Onaylar"
+          value={pendingApprovalCount.toString()}
+          description={isManager ? 'İşlem bekleyen bağlı personel talepleri' : 'Bekleyen talepleriniz'}
+          icon={<Clock3 size={22} />}
+        />
 
-        {!isManager && (
-          <button
-            onClick={() => setIsCreateOpen(true)}
-            className="px-5 py-3 rounded-2xl bg-primary text-white font-black flex items-center gap-2 hover:bg-surface-tint"
-          >
-            <Plus size={18} />
-            Yeni Masraf
-          </button>
-        )}
+        <SummaryCard
+          title="İzin Talepleri"
+          value={leaves.length.toString()}
+          description="Listelenen izin talepleri"
+          icon={<FileText size={22} />}
+        />
       </div>
 
       <section className="bg-white rounded-[2rem] border border-outline-variant/20 shadow-sm overflow-hidden">
+        <div className="px-6 py-5 border-b border-outline-variant/10 flex items-center justify-between">
+          <h2 className="text-lg font-black text-on-surface">
+            Son Masraf Talepleri
+          </h2>
+
+          <button
+            onClick={() => navigate('/expenses')}
+            className="text-primary font-bold text-sm hover:underline"
+          >
+            Tümünü Gör
+          </button>
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-surface-container-low">
@@ -127,7 +171,7 @@ export const ExpensesPage = () => {
                 </tr>
               )}
 
-              {!loading && expenses.length === 0 && (
+              {!loading && recentExpenses.length === 0 && (
                 <tr>
                   <td colSpan={5} className="px-6 py-8 text-center text-on-surface-variant">
                     Masraf talebi bulunamadı.
@@ -136,24 +180,16 @@ export const ExpensesPage = () => {
               )}
 
               {!loading &&
-                expenses.map((expense) => (
+                recentExpenses.map((expense) => (
                   <tr key={expense.id} className="border-t border-outline-variant/10">
                     <td className="px-6 py-4">
-                      <div className="flex items-start gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                          <Receipt size={18} />
-                        </div>
+                      <p className="font-bold text-on-surface">{expense.description}</p>
 
-                        <div>
-                          <p className="font-bold text-on-surface">{expense.description}</p>
-
-                          {isManager && (
-                            <p className="text-xs text-on-surface-variant mt-1">
-                              Talep sahibi: {expense.employeeFullName}
-                            </p>
-                          )}
-                        </div>
-                      </div>
+                      {isManager && (
+                        <p className="text-xs text-on-surface-variant mt-1">
+                          Talep sahibi: {expense.employeeFullName}
+                        </p>
+                      )}
                     </td>
 
                     <td className="px-6 py-4 font-bold">
@@ -184,12 +220,6 @@ export const ExpensesPage = () => {
         </div>
       </section>
 
-      <ExpenseModal
-        isOpen={isCreateOpen}
-        onClose={() => setIsCreateOpen(false)}
-        onSuccess={loadExpenses}
-      />
-
       <ApprovalModal
         isOpen={!!selectedExpense}
         type="EXPENSE"
@@ -208,6 +238,32 @@ export const ExpensesPage = () => {
   );
 };
 
+const SummaryCard = ({
+  title,
+  value,
+  description,
+  icon,
+}: {
+  title: string;
+  value: string;
+  description: string;
+  icon: React.ReactNode;
+}) => {
+  return (
+    <div className="bg-white rounded-[2rem] border border-outline-variant/20 shadow-sm p-6 flex items-start justify-between">
+      <div>
+        <p className="text-sm text-on-surface-variant">{title}</p>
+        <p className="text-3xl font-black text-on-surface mt-8">{value}</p>
+        <p className="text-xs text-success mt-2">{description}</p>
+      </div>
+
+      <div className="w-11 h-11 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
+        {icon}
+      </div>
+    </div>
+  );
+};
+
 const StatusBadge = ({ status }: { status: string }) => {
   const className =
     status === 'APPROVED'
@@ -222,3 +278,5 @@ const StatusBadge = ({ status }: { status: string }) => {
     </span>
   );
 };
+
+export default DashboardPage;

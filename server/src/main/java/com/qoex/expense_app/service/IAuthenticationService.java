@@ -10,7 +10,7 @@ public interface IAuthenticationService {
 
     ApiResponse<TokenResponseDto> refreshToken(String refreshToken);
 
-    ApiResponse<Void> logout();
+    ApiResponse<Void> logout(Long currentUserId);
 
     ApiResponse<Void> register(RegisterRequestDto request);
 }

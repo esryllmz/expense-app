@@ -7,6 +7,7 @@ import com.qoex.expense_app.dto.response.ExpenseResponseDto;
 import com.qoex.expense_app.model.Expense;
 import com.qoex.expense_app.model.User;
 import com.qoex.expense_app.core.enums.RequestStatus;
+import com.qoex.expense_app.core.enums.UserRole;
 import com.qoex.expense_app.repository.ExpenseRepository;
 import com.qoex.expense_app.repository.UserRepository;
 import com.qoex.expense_app.service.IExpenseService;
@@ -44,10 +45,20 @@ public class ExpenseServiceImpl implements IExpenseService {
 
         Expense savedExpense = expenseRepository.save(expense);
 
-        // ASYNC EVENT: Bildirim akışını tetikle
-        eventPublisher.publishEvent(new ExpenseCreatedEvent(savedExpense));
+        User manager = employee.getManager();
 
-        return ApiResponse.success(ExpenseResponseDto.fromEntity(savedExpense), "Masraf talebi oluşturuldu.", 201);
+        eventPublisher.publishEvent(new ExpenseCreatedEvent(
+                savedExpense.getId(),
+                employee.getId(),
+                employee.getFirstName() + " " + employee.getLastName(),
+                manager != null ? manager.getId() : null,
+                manager != null ? manager.getFirstName() + " " + manager.getLastName() : null,
+                savedExpense.getAmount()));
+
+        return ApiResponse.success(
+                ExpenseResponseDto.fromEntity(savedExpense),
+                "Masraf talebi oluşturuldu.",
+                201);
     }
 
     @Override
@@ -60,19 +71,11 @@ public class ExpenseServiceImpl implements IExpenseService {
     }
 
     @Override
-    @Transactional(readOnly = true)
-    public ApiResponse<List<ExpenseResponseDto>> getSubordinateExpenses(Long managerId) {
-        // KURAL: Yönetici sadece kendine bağlı çalışanları görür
-        List<ExpenseResponseDto> expenses = expenseRepository.findSubordinateExpenses(managerId)
-                .stream().map(ExpenseResponseDto::fromEntity).toList();
-        return ApiResponse.success(expenses, "Bağlı personel masrafları getirildi.", 200);
-    }
-
-    @Override
     @Transactional
     public ApiResponse<Void> updateStatus(Long expenseId, UpdateExpenseStatusRequest request, Long managerId) {
         Expense expense = businessRules.getExpenseIfExist(expenseId);
 
+        businessRules.statusMustBeFinalDecision(request.status());
         businessRules.expenseMustBePending(expense);
         businessRules.validateManagerOwnership(expense, managerId);
 
@@ -80,5 +83,29 @@ public class ExpenseServiceImpl implements IExpenseService {
         expenseRepository.save(expense);
 
         return ApiResponse.success(null, "Masraf durumu güncellendi: " + request.status(), 200);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ApiResponse<List<ExpenseResponseDto>> getSubordinateExpenses(Long managerId) {
+        User currentUser = userRepository.findById(managerId)
+                .orElseThrow(() -> new NotFoundException("Kullanıcı bulunamadı."));
+
+        List<Expense> expenses;
+
+        if (currentUser.getRole() == UserRole.ROLE_GM) {
+            // GM tüm şirket taleplerini görür.
+            expenses = expenseRepository.findAllCompanyExpensesExceptCurrentUser(managerId);
+        } else {
+            // Team Lead sadece direkt bağlı çalışanlarının taleplerini görür.
+            expenses = expenseRepository.findSubordinateExpenses(managerId);
+        }
+
+        List<ExpenseResponseDto> response = expenses
+                .stream()
+                .map(ExpenseResponseDto::fromEntity)
+                .toList();
+
+        return ApiResponse.success(response, "Bağlı personel masrafları getirildi.", 200);
     }
 }

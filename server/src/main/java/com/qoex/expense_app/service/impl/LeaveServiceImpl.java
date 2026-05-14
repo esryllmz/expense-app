@@ -2,6 +2,7 @@ package com.qoex.expense_app.service.impl;
 
 import com.qoex.expense_app.core.responses.ApiResponse;
 import com.qoex.expense_app.core.enums.RequestStatus;
+import com.qoex.expense_app.core.enums.UserRole;
 import com.qoex.expense_app.core.events.LeaveCreatedEvent;
 import com.qoex.expense_app.core.exceptions.NotFoundException;
 import com.qoex.expense_app.dto.request.Leave.CreateLeaveRequest;
@@ -47,11 +48,20 @@ public class LeaveServiceImpl implements ILeaveService {
         leave.setStatus(RequestStatus.PENDING);
         leave.setEmployee(employee);
 
-        leaveRequestRepository.save(leave);
+        Leave savedLeave = leaveRequestRepository.save(leave);
 
-        // 2. Event fırlatılarak eventPublisher uyarısı çözüldü ve Async yapı kuruldu
-        eventPublisher.publishEvent(new LeaveCreatedEvent(leave));
-        log.info("İzin talebi oluşturuldu ve bildirim kuyruğuna eklendi. ID: {}", leave.getId());
+        User manager = employee.getManager();
+
+        eventPublisher.publishEvent(new LeaveCreatedEvent(
+                savedLeave.getId(),
+                employee.getId(),
+                employee.getFirstName() + " " + employee.getLastName(),
+                manager != null ? manager.getId() : null,
+                manager != null ? manager.getFirstName() + " " + manager.getLastName() : null,
+                savedLeave.getStartDate(),
+                savedLeave.getEndDate()));
+
+        log.info("İzin talebi oluşturuldu ve bildirim kuyruğuna eklendi. ID: {}", savedLeave.getId());
 
         return ApiResponse.success(null, "İzin talebi başarıyla oluşturuldu.", 201);
     }
@@ -70,29 +80,39 @@ public class LeaveServiceImpl implements ILeaveService {
     @Override
     @Transactional(readOnly = true)
     public ApiResponse<List<LeaveResponseDto>> getSubordinateLeaves(Long managerId) {
-        List<LeaveResponseDto> list = leaveRequestRepository.findSubordinateLeaves(managerId)
+        User currentUser = userRepository.findById(managerId)
+                .orElseThrow(() -> new NotFoundException("Kullanıcı bulunamadı."));
+
+        List<Leave> leaves;
+
+        if (currentUser.getRole() == UserRole.ROLE_GM) {
+            // GM tüm şirket izin taleplerini görür.
+            leaves = leaveRequestRepository.findAllCompanyLeavesExceptCurrentUser(managerId);
+        } else {
+            // Team Lead sadece direkt bağlı çalışanlarının izin taleplerini görür.
+            leaves = leaveRequestRepository.findSubordinateLeaves(managerId);
+        }
+
+        List<LeaveResponseDto> response = leaves
                 .stream()
                 .map(LeaveResponseDto::fromEntity)
                 .toList();
-        return ApiResponse.success(list, "Bağlı personel izin talepleri getirildi.", 200);
+
+        return ApiResponse.success(response, "Bağlı personel izin talepleri getirildi.", 200);
     }
 
     @Override
     @Transactional
     public ApiResponse<Void> updateStatus(Long leaveId, UpdateLeaveStatusRequest request, Long managerId) {
-        // Eksik metodun implementasyonu
         Leave leave = businessRules.getIfExist(leaveId);
 
-        // İş Kuralı: Sadece kendi personeli mi?
+        businessRules.statusMustBeFinalDecision(request.status());
         businessRules.validateManagerAction(leave, managerId);
-
-        // İş Kuralı: İzin zaten sonuçlanmış mı?
         businessRules.leaveMustBePending(leave);
 
         leave.setStatus(request.status());
         leaveRequestRepository.save(leave);
 
-        log.info("İzin talebi {} tarafından {} olarak güncellendi.", managerId, request.status());
         return ApiResponse.success(null, "İzin durumu başarıyla güncellendi.", 200);
     }
 }

@@ -3,6 +3,7 @@ package com.qoex.expense_app.service.rules;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
+import com.qoex.expense_app.core.enums.UserRole;
 import com.qoex.expense_app.core.exceptions.BusinessException;
 import com.qoex.expense_app.core.exceptions.ForbiddenException;
 import com.qoex.expense_app.core.exceptions.NotFoundException;
@@ -34,9 +35,8 @@ public class UserBusinessRules {
         });
     }
 
-    public void userMustBeOwnerOrAdmin(Long targetId, Long currentUserId, String role) {
-        // .NET: if (requestTargetId != currentUserId && userRole != "Admin")
-        if (!targetId.equals(currentUserId) && !role.equals("ROLE_ADMIN")) {
+    public void userMustBeOwnerOrGm(Long targetId, Long currentUserId, String role) {
+        if (!targetId.equals(currentUserId) && !role.equals("ROLE_GM")) {
             log.error("Yetkisiz erişim denemesi: {}", currentUserId);
             throw new ForbiddenException("Bu işlem için yetkiniz bulunmamaktadır.");
         }
@@ -47,4 +47,24 @@ public class UserBusinessRules {
             throw new BusinessException("E-posta veya şifre hatalı.");
         }
     }
+
+    public void employeeMustHaveManager(User employee) {
+        if (employee.getManager() == null) {
+            throw new BusinessException("Talep oluşturabilmek için önce bir yönetici atanmalıdır.");
+        }
+    }
+
+    public void userCannotBeOwnManager(Long userId, Long managerId) {
+        if (userId.equals(managerId)) {
+            throw new BusinessException("Kullanıcı kendi yöneticisi olarak atanamaz.");
+        }
+    }
+
+    public void managerMustBeManagerRole(User manager) {
+        if (manager.getRole() != UserRole.ROLE_GM &&
+                manager.getRole() != UserRole.ROLE_TEAM_LEADER) {
+            throw new BusinessException("Yönetici olarak sadece GM veya Team Lead atanabilir.");
+        }
+    }
+
 }

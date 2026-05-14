@@ -31,13 +31,13 @@ public class ExpensesController {
     }
 
     @GetMapping("/subordinates")
-    @PreAuthorize("hasAnyRole('MANAGER', 'ADMIN')") // Role hiyerarşisi burada başlar
+    @PreAuthorize("hasAnyRole('GM', 'TEAM_LEADER')")
     public ResponseEntity<ApiResponse<List<ExpenseResponseDto>>> getSubordinates() {
         return ResponseEntity.ok(expenseService.getSubordinateExpenses(SecurityUtils.getCurrentUserId()));
     }
 
     @PatchMapping("/{id}/status")
-    @PreAuthorize("hasAnyRole('MANAGER', 'ADMIN')")
+    @PreAuthorize("hasAnyRole('GM', 'TEAM_LEADER')")
     public ResponseEntity<ApiResponse<Void>> updateStatus(
             @PathVariable Long id,
             @Valid @RequestBody UpdateExpenseStatusRequest request) {
