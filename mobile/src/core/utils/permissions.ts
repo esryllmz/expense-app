@@ -1,19 +1,16 @@
-import type { UserRole } from '../../features/auth/types/authtypes';
-import type { RequestStatus } from '../../features/expense/types/expenseTypes';
-
-export const isGM = (role?: UserRole | null) => role === 'ROLE_GM';
-
-export const isTeamLead = (role?: UserRole | null) =>
-  role === 'ROLE_TEAM_LEADER';
-
-export const isEmployee = (role?: UserRole | null) =>
-  role === 'ROLE_EMPLOYEE';
+import type { UserRole } from '../../features/auth/types/authTypes';
+import type { RequestStatus } from '../../features/expenses/types/expenseTypes';
 
 export const canManageRequests = (role?: UserRole | null) =>
   role === 'ROLE_GM' || role === 'ROLE_TEAM_LEADER';
 
 export const canCreateOwnRequest = (role?: UserRole | null) =>
   role === 'ROLE_EMPLOYEE' || role === 'ROLE_TEAM_LEADER';
+
+export const isGM = (role?: UserRole | null) => role === 'ROLE_GM';
+
+export const isTeamLead = (role?: UserRole | null) =>
+  role === 'ROLE_TEAM_LEADER';
 
 export const canApproveRequest = ({
   role,

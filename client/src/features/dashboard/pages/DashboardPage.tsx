@@ -126,7 +126,7 @@ const DashboardPage = () => {
         />
       </div>
 
-      <section className="bg-white rounded-[2rem] border border-outline-variant/20 shadow-sm overflow-hidden">
+      <section className="bg-white rounded-4xl border border-outline-variant/20 shadow-sm overflow-hidden">
         <div className="px-6 py-5 border-b border-outline-variant/10 flex items-center justify-between">
           <h2 className="text-lg font-black text-on-surface">
             Son Masraf Talepleri
@@ -254,7 +254,7 @@ const SummaryCard = ({
   icon: React.ReactNode;
 }) => {
   return (
-    <div className="bg-white rounded-[2rem] border border-outline-variant/20 shadow-sm p-6 flex items-start justify-between">
+    <div className="bg-white rounded-4xl border border-outline-variant/20 shadow-sm p-6 flex items-start justify-between">
       <div>
         <p className="text-sm text-on-surface-variant">{title}</p>
         <p className="text-3xl font-black text-on-surface mt-8">{value}</p>

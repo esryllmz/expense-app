@@ -148,7 +148,7 @@ export const LeavePage = () => {
         </div>
       </div>
 
-      <section className="bg-white rounded-[2rem] border border-outline-variant/20 shadow-sm overflow-hidden">
+      <section className="bg-white rounded-4xl border border-outline-variant/20 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-surface-container-low">

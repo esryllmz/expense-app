@@ -5,36 +5,50 @@ import {
   Modal,
   Pressable,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+
 import { colors } from '../../../core/theme/colors';
-import { useAuthContext } from '../../auth/context/AuthContext';
 import { AppHeader } from '../../../shared/components/AppHeader';
-import { leaveService } from '../services/leaveService';
-import type { Leave, RequestStatus } from '../types/leaveTypes';
+import { LoadingView } from '../../../components/common/LoadingView';
+import { EmptyState } from '../../../components/common/EmptyState';
+import { ApprovalModal } from '../../../components/common/ApprovalModal';
+import { StatusBadge } from '../../../components/common/StatusBadge';
+import { getApiErrorMessage } from '../../../core/api/apiError';
+import {
+  canApproveRequest,
+  canCreateOwnRequest,
+  isGM,
+  isTeamLead,
+} from '../../../core/utils/permissions';
 import {
   calculateLeaveDays,
   formatDateRange,
-  getStatusLabel,
   isBeforeToday,
   isValidIsoDate,
 } from '../../../core/utils/formatters';
 
+import { useAuthContext } from '../../auth/context/AuthContext';
+import { leaveService } from '../services/leaveService';
+import type { Leave, RequestStatus } from '../types/leaveTypes';
+
+type LeaveViewMode = 'APPROVALS' | 'MINE';
+type LeaveFilter = 'ALL' | 'PENDING';
+
 export const LeaveScreen = () => {
   const { user } = useAuthContext();
 
-  const isManager =
-    user?.role === 'ROLE_GM' || user?.role === 'ROLE_TEAM_LEADER';
+  const [viewMode, setViewMode] = useState<LeaveViewMode>(
+    user?.role === 'ROLE_TEAM_LEADER' ? 'APPROVALS' : 'MINE'
+  );
 
-  const canCreateLeave =
-    user?.role === 'ROLE_EMPLOYEE' && user?.managerId != null;
-
+  const [activeFilter, setActiveFilter] = useState<LeaveFilter>('ALL');
   const [leaves, setLeaves] = useState<Leave[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -43,19 +57,30 @@ export const LeaveScreen = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
+  const isGeneralManager = isGM(user?.role);
+  const isLead = isTeamLead(user?.role);
+
+  const shouldLoadSubordinates =
+    isGeneralManager || (isLead && viewMode === 'APPROVALS');
+
+  const canCreateLeave =
+    canCreateOwnRequest(user?.role) &&
+    !isGeneralManager &&
+    viewMode === 'MINE' &&
+    user?.managerId != null;
+
   const loadLeaves = async () => {
     try {
-      const response = isManager
-        ? await leaveService.getSubordinateLeaves()
-        : await leaveService.getMyLeaves();
+      const response = shouldLoadSubordinates
+        ? await leaveService.getSubordinates()
+        : await leaveService.getMine();
 
       setLeaves(response.data || []);
-    } catch (error: any) {
-      const message =
-        error?.response?.data?.message ||
-        'İzin talepleri alınamadı. Backend bağlantısını kontrol edin.';
-
-      Alert.alert('Hata', message);
+    } catch (error) {
+      Alert.alert(
+        'Hata',
+        getApiErrorMessage(error, 'İzin talepleri alınamadı.')
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -63,24 +88,53 @@ export const LeaveScreen = () => {
   };
 
   useEffect(() => {
+    setLoading(true);
+    setActiveFilter('ALL');
     loadLeaves();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.role]);
+  }, [user?.role, viewMode]);
 
   const pendingCount = useMemo(() => {
     return leaves.filter((leave) => leave.status === 'PENDING').length;
   }, [leaves]);
 
-  const remainingDays = useMemo(() => {
-    const approvedUsedDays = leaves
-      .filter((leave) => leave.status === 'APPROVED')
-      .reduce(
-        (sum, leave) => sum + calculateLeaveDays(leave.startDate, leave.endDate),
-        0
-      );
-
-    return Math.max(0, 14 - approvedUsedDays);
+  const approvedCount = useMemo(() => {
+    return leaves.filter((leave) => leave.status === 'APPROVED').length;
   }, [leaves]);
+
+  const rejectedCount = useMemo(() => {
+    return leaves.filter((leave) => leave.status === 'REJECTED').length;
+  }, [leaves]);
+
+  const displayedLeaves = useMemo(() => {
+    if (activeFilter === 'PENDING') {
+      return leaves.filter((leave) => leave.status === 'PENDING');
+    }
+
+    return leaves;
+  }, [activeFilter, leaves]);
+
+  const selectedCanAct = selectedLeave
+    ? canApproveRequest({
+        role: user?.role,
+        currentUserId: user?.id,
+        employeeId: selectedLeave.employeeId,
+        status: selectedLeave.status,
+      })
+    : false;
+
+
+  const headerTitle = shouldLoadSubordinates
+    ? 'İzin Talepleri'
+    : 'İzin Taleplerim';
+
+  const headerDescription = shouldLoadSubordinates
+    ? 'Bağlı çalışanlarınızın izin taleplerini buradan takip edebilirsiniz.'
+    : 'Geçmiş ve bekleyen izin taleplerinizi buradan takip edebilirsiniz.';
+
+  const togglePendingFilter = () => {
+    setActiveFilter((current) => (current === 'PENDING' ? 'ALL' : 'PENDING'));
+  };
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -88,18 +142,10 @@ export const LeaveScreen = () => {
   };
 
   const handleCreatePress = () => {
-    if (isManager) {
-      Alert.alert(
-        'Yetkisiz işlem',
-        'Yöneticiler bu ekrandan kendi adına izin talebi oluşturamaz.'
-      );
-      return;
-    }
-
     if (!canCreateLeave) {
       Alert.alert(
-        'Yönetici ataması gerekli',
-        'İzin talebi oluşturabilmek için önce bir yöneticiniz atanmalıdır.'
+        'Yetkisiz işlem',
+        'Talep oluşturmak için uygun rol ve yönetici ataması gerekir.'
       );
       return;
     }
@@ -116,19 +162,31 @@ export const LeaveScreen = () => {
     try {
       const response = await leaveService.updateStatus(leaveId, status);
 
-      if (response.success) {
-        setSelectedLeave(null);
-        await loadLeaves();
+      if (!response.success) {
+        Alert.alert('Hata', response.message || 'İzin durumu güncellenemedi.');
+        return;
       }
-    } catch (error: any) {
-      const message =
-        error?.response?.data?.message || 'İzin durumu güncellenemedi.';
 
-      Alert.alert('Hata', message);
+      setSelectedLeave(null);
+      await loadLeaves();
+    } catch (error) {
+      Alert.alert(
+        'Hata',
+        getApiErrorMessage(error, 'İzin durumu güncellenemedi.')
+      );
     } finally {
       setActionLoading(false);
     }
   };
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.root}>
+        <AppHeader />
+        <LoadingView text="İzinler yükleniyor..." />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.root}>
@@ -148,32 +206,107 @@ export const LeaveScreen = () => {
         <View style={styles.titleSection}>
           <View style={styles.titleRow}>
             <View style={styles.titleTextArea}>
-              <Text style={styles.overline}>
-                {isManager ? 'YÖNETİM' : 'PERSONEL'}
-              </Text>
-
-              <Text style={styles.title}>
-                {isManager ? 'İzin Talepleri' : 'İzin Taleplerim'}
-              </Text>
+              <Text style={styles.title}>{headerTitle}</Text>
             </View>
 
-            <View style={styles.remainingChip}>
-              <Text style={styles.remainingText}>
-                {isManager
-                  ? `${pendingCount} Bekleyen`
-                  : `${remainingDays} Kalan Gün`}
+            <Pressable
+              onPress={togglePendingFilter}
+              hitSlop={8}
+              style={({ pressed }) => [
+                styles.pendingChip,
+                activeFilter === 'PENDING' && styles.pendingChipActive,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.pendingChipText,
+                  activeFilter === 'PENDING' && styles.pendingChipTextActive,
+                ]}
+              >
+                {activeFilter === 'PENDING'
+                  ? 'Tümü'
+                  : `${pendingCount} Bekleyen`}
               </Text>
-            </View>
+            </Pressable>
           </View>
 
-          <Text style={styles.description}>
-            {isManager
-              ? 'Bağlı çalışanlarınızın geçmiş ve bekleyen izin taleplerini buradan takip edebilirsiniz.'
-              : 'Geçmiş ve bekleyen izin taleplerinizi buradan takip edebilirsiniz.'}
-          </Text>
+          <Text style={styles.description}>{headerDescription}</Text>
+
+          {activeFilter === 'PENDING' && (
+            <View style={styles.filterInfo}>
+              <Ionicons
+                name="filter-outline"
+                size={16}
+                color={colors.primary}
+              />
+
+              <Text style={styles.filterInfoText}>
+                Sadece bekleyen izin talepleri gösteriliyor.
+              </Text>
+            </View>
+          )}
         </View>
 
-        {!isManager && (
+        {isLead && (
+          <View style={styles.segment}>
+            <Pressable
+              onPress={() => setViewMode('APPROVALS')}
+              style={[
+                styles.segmentButton,
+                viewMode === 'APPROVALS' && styles.segmentButtonActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.segmentText,
+                  viewMode === 'APPROVALS' && styles.segmentTextActive,
+                ]}
+              >
+                Onay Talepleri
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => setViewMode('MINE')}
+              style={[
+                styles.segmentButton,
+                viewMode === 'MINE' && styles.segmentButtonActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.segmentText,
+                  viewMode === 'MINE' && styles.segmentTextActive,
+                ]}
+              >
+                Benim Taleplerim
+              </Text>
+            </Pressable>
+          </View>
+        )}
+
+        <View style={styles.statsRow}>
+          <MiniStatCard
+            label="Bekleyen"
+            value={pendingCount}
+            valueColor={colors.warning}
+          />
+
+          <MiniStatCard
+            label="Onaylanan"
+            value={approvedCount}
+            valueColor={colors.success}
+          />
+
+          <MiniStatCard
+            label="Reddedilen"
+            value={rejectedCount}
+            valueColor={colors.error}
+          />
+        </View>
+
+        {!isGeneralManager && viewMode === 'MINE' && (
           <Pressable
             onPress={handleCreatePress}
             style={({ pressed }) => [
@@ -187,35 +320,34 @@ export const LeaveScreen = () => {
           </Pressable>
         )}
 
-        {loading ? (
-          <View style={styles.loadingArea}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.loadingText}>İzinler yükleniyor...</Text>
-          </View>
-        ) : leaves.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <Ionicons name="calendar-outline" size={32} color={colors.primary} />
-            <Text style={styles.emptyTitle}>İzin talebi bulunamadı</Text>
-            <Text style={styles.emptyText}>
-              {isManager
-                ? 'Bağlı çalışanlarınıza ait izin talebi bulunmuyor.'
-                : 'Yeni izin talebi oluşturarak süreci başlatabilirsiniz.'}
-            </Text>
-          </View>
+        {displayedLeaves.length === 0 ? (
+          <EmptyState
+            icon="calendar-outline"
+            title={
+              activeFilter === 'PENDING'
+                ? 'Bekleyen izin talebi bulunamadı'
+                : 'İzin talebi bulunamadı'
+            }
+            description={
+              activeFilter === 'PENDING'
+                ? 'Beklemede olan izin talebi bulunmuyor.'
+                : shouldLoadSubordinates
+                  ? 'Bağlı çalışanlarınıza ait izin talebi bulunmuyor.'
+                  : 'Yeni izin talebi oluşturarak süreci başlatabilirsiniz.'
+            }
+          />
         ) : (
           <View style={styles.listArea}>
-            {leaves.map((leave) => (
+            {displayedLeaves.map((leave) => (
               <LeaveCard
                 key={leave.id}
                 leave={leave}
-                isManager={isManager}
+                showEmployee={shouldLoadSubordinates}
                 onPress={() => setSelectedLeave(leave)}
               />
             ))}
           </View>
         )}
-
-        <PolicyCard />
       </ScrollView>
 
       <CreateLeaveModal
@@ -227,9 +359,11 @@ export const LeaveScreen = () => {
         }}
       />
 
-      <LeaveDetailModal
-        leave={selectedLeave}
-        isManager={isManager}
+      <ApprovalModal
+        visible={!!selectedLeave}
+        type="LEAVE"
+        item={selectedLeave}
+        canAct={selectedCanAct}
         loading={actionLoading}
         onClose={() => setSelectedLeave(null)}
         onApprove={() =>
@@ -243,13 +377,30 @@ export const LeaveScreen = () => {
   );
 };
 
+const MiniStatCard = ({
+  label,
+  value,
+  valueColor,
+}: {
+  label: string;
+  value: number;
+  valueColor: string;
+}) => {
+  return (
+    <View style={styles.statCard}>
+      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={[styles.statValue, { color: valueColor }]}>{value}</Text>
+    </View>
+  );
+};
+
 const LeaveCard = ({
   leave,
-  isManager,
+  showEmployee,
   onPress,
 }: {
   leave: Leave;
-  isManager: boolean;
+  showEmployee: boolean;
   onPress: () => void;
 }) => {
   const days = calculateLeaveDays(leave.startDate, leave.endDate);
@@ -260,7 +411,6 @@ const LeaveCard = ({
       style={({ pressed }) => [
         styles.leaveCard,
         pressed && styles.cardPressed,
-        leave.status === 'APPROVED' && styles.approvedCard,
       ]}
     >
       <View style={styles.cardStatusArea}>
@@ -270,7 +420,7 @@ const LeaveCard = ({
       <View style={styles.cardMainRow}>
         <View style={styles.leaveIconBox}>
           <Ionicons
-            name={getLeaveIcon(leave.status)}
+            name="calendar-outline"
             size={28}
             color={colors.primary}
           />
@@ -285,7 +435,7 @@ const LeaveCard = ({
             {formatDateRange(leave.startDate, leave.endDate)}
           </Text>
 
-          {isManager && (
+          {showEmployee && (
             <Text style={styles.employeeText} numberOfLines={1}>
               Talep sahibi: {leave.employeeFullName}
             </Text>
@@ -297,7 +447,7 @@ const LeaveCard = ({
             <Text style={styles.durationLabel}>
               Süre:{' '}
               <Text style={styles.durationValue}>
-                {days} İş Günü
+                {days} Gün
               </Text>
             </Text>
 
@@ -310,42 +460,6 @@ const LeaveCard = ({
         </View>
       </View>
     </Pressable>
-  );
-};
-
-const StatusBadge = ({ status }: { status: RequestStatus }) => {
-  const config = getStatusConfig(status);
-
-  return (
-    <View style={[styles.statusBadge, { backgroundColor: config.bg }]}>
-      <Ionicons name={config.icon} size={14} color={config.color} />
-      <Text style={[styles.statusText, { color: config.color }]}>
-        {getStatusLabel(status)}
-      </Text>
-    </View>
-  );
-};
-
-const PolicyCard = () => {
-  return (
-    <View style={styles.policyCard}>
-      <View style={styles.policyIcon}>
-        <Ionicons
-          name="information-circle-outline"
-          size={28}
-          color={colors.primaryContainer}
-        />
-      </View>
-
-      <View style={styles.policyTextArea}>
-        <Text style={styles.policyTitle}>İzin Politikası Hatırlatması</Text>
-
-        <Text style={styles.policyText}>
-          Yıllık izin taleplerinin en az 2 hafta öncesinden sisteme girilmesi
-          gerekmektedir. Onay süreci yönetici bazlı 3 iş günü sürer.
-        </Text>
-      </View>
-    </View>
   );
 };
 
@@ -398,21 +512,24 @@ const CreateLeaveModal = ({
     setLoading(true);
 
     try {
-      const response = await leaveService.createLeave({
+      const response = await leaveService.create({
         description: description.trim(),
         startDate,
         endDate,
       });
 
-      if (response.success) {
-        resetForm();
-        onSuccess();
+      if (!response.success) {
+        Alert.alert('Hata', response.message || 'İzin talebi oluşturulamadı.');
+        return;
       }
-    } catch (error: any) {
-      const message =
-        error?.response?.data?.message || 'İzin talebi oluşturulamadı.';
 
-      Alert.alert('Hata', message);
+      resetForm();
+      onSuccess();
+    } catch (error) {
+      Alert.alert(
+        'Hata',
+        getApiErrorMessage(error, 'İzin talebi oluşturulamadı.')
+      );
     } finally {
       setLoading(false);
     }
@@ -426,7 +543,11 @@ const CreateLeaveModal = ({
             <Text style={styles.modalTitle}>Yeni İzin Talebi</Text>
 
             <Pressable onPress={handleClose}>
-              <Ionicons name="close" size={24} color={colors.onSurfaceVariant} />
+              <Ionicons
+                name="close"
+                size={24}
+                color={colors.onSurfaceVariant}
+              />
             </Pressable>
           </View>
 
@@ -462,13 +583,16 @@ const CreateLeaveModal = ({
           />
 
           <Text style={styles.helperText}>
-            Tarihleri örnek formatta girin: 2026-05-20
+            Örnek format: 2026-05-20
           </Text>
 
           <Pressable
             disabled={loading}
             onPress={handleCreate}
-            style={[styles.modalPrimaryButton, loading && styles.disabledButton]}
+            style={[
+              styles.modalPrimaryButton,
+              loading && styles.disabledButton,
+            ]}
           >
             {loading ? (
               <ActivityIndicator color={colors.onPrimary} />
@@ -482,119 +606,6 @@ const CreateLeaveModal = ({
   );
 };
 
-const LeaveDetailModal = ({
-  leave,
-  isManager,
-  loading,
-  onClose,
-  onApprove,
-  onReject,
-}: {
-  leave: Leave | null;
-  isManager: boolean;
-  loading: boolean;
-  onClose: () => void;
-  onApprove: () => void;
-  onReject: () => void;
-}) => {
-  if (!leave) return null;
-
-  const canAct = isManager && leave.status === 'PENDING';
-
-  return (
-    <Modal visible={!!leave} transparent animationType="fade">
-      <View style={styles.modalBackdrop}>
-        <View style={styles.modalCard}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>İzin Detayı</Text>
-
-            <Pressable onPress={onClose}>
-              <Ionicons name="close" size={24} color={colors.onSurfaceVariant} />
-            </Pressable>
-          </View>
-
-          <DetailRow label="Talep Sahibi" value={leave.employeeFullName || '-'} />
-          <DetailRow label="Açıklama" value={leave.description || '-'} />
-          <DetailRow
-            label="Tarih"
-            value={formatDateRange(leave.startDate, leave.endDate)}
-          />
-          <DetailRow
-            label="Süre"
-            value={`${calculateLeaveDays(leave.startDate, leave.endDate)} İş Günü`}
-          />
-          <DetailRow label="Durum" value={getStatusLabel(leave.status)} />
-
-          {canAct && (
-            <View style={styles.actionRow}>
-              <Pressable
-                disabled={loading}
-                onPress={onReject}
-                style={[styles.rejectButton, loading && styles.disabledButton]}
-              >
-                <Text style={styles.rejectButtonText}>Reddet</Text>
-              </Pressable>
-
-              <Pressable
-                disabled={loading}
-                onPress={onApprove}
-                style={[styles.approveButton, loading && styles.disabledButton]}
-              >
-                <Text style={styles.approveButtonText}>Onayla</Text>
-              </Pressable>
-            </View>
-          )}
-        </View>
-      </View>
-    </Modal>
-  );
-};
-
-const DetailRow = ({ label, value }: { label: string; value: string }) => {
-  return (
-    <View style={styles.detailRow}>
-      <Text style={styles.detailLabel}>{label}</Text>
-      <Text style={styles.detailValue}>{value}</Text>
-    </View>
-  );
-};
-
-const getStatusConfig = (status: RequestStatus) => {
-  switch (status) {
-    case 'APPROVED':
-      return {
-        bg: '#D1FAE5',
-        color: '#047857',
-        icon: 'checkmark-circle-outline' as const,
-      };
-    case 'REJECTED':
-      return {
-        bg: colors.errorContainer,
-        color: colors.onErrorContainer,
-        icon: 'close-circle-outline' as const,
-      };
-    case 'PENDING':
-    default:
-      return {
-        bg: '#FFE2D6',
-        color: '#7D2D00',
-        icon: 'ellipsis-horizontal-circle-outline' as const,
-      };
-  }
-};
-
-const getLeaveIcon = (status: RequestStatus) => {
-  switch (status) {
-    case 'APPROVED':
-      return 'calendar-outline' as const;
-    case 'REJECTED':
-      return 'airplane-outline' as const;
-    case 'PENDING':
-    default:
-      return 'calendar-clear-outline' as const;
-  }
-};
-
 const styles = StyleSheet.create({
   root: {
     flex: 1,
@@ -604,12 +615,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    paddingHorizontal: 22,
-    paddingTop: 26,
+    paddingHorizontal: 20,
+    paddingTop: 22,
     paddingBottom: 120,
   },
   titleSection: {
-    gap: 12,
+    gap: 10,
+    marginBottom: 20,
   },
   titleRow: {
     flexDirection: 'row',
@@ -622,49 +634,120 @@ const styles = StyleSheet.create({
   },
   overline: {
     color: colors.secondary,
-    fontSize: 13,
-    lineHeight: 18,
-    letterSpacing: 1.4,
-    fontWeight: '800',
+    fontSize: 12,
+    lineHeight: 17,
+    letterSpacing: 1.2,
+    fontWeight: '900',
   },
   title: {
-    marginTop: 3,
+    marginTop: 2,
     color: colors.onSurface,
     fontSize: 28,
     lineHeight: 34,
     fontWeight: '900',
   },
-  remainingChip: {
-    backgroundColor: colors.primaryFixed,
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 999,
-  },
-  remainingText: {
-    color: colors.onPrimaryFixed,
-    fontSize: 15,
-    fontWeight: '900',
-    letterSpacing: 0.7,
-  },
   description: {
     color: colors.onSurfaceVariant,
-    fontSize: 16,
-    lineHeight: 24,
+    fontSize: 15,
+    lineHeight: 23,
+    fontWeight: '500',
+  },
+  pendingChip: {
+    minHeight: 34,
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    backgroundColor: colors.primaryFixed,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pendingChipActive: {
+    backgroundColor: colors.primaryContainer,
+  },
+  pendingChipText: {
+    color: colors.onPrimaryFixed,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  pendingChipTextActive: {
+    color: colors.onPrimary,
+  },
+  filterInfo: {
+    marginTop: 4,
+    borderRadius: 12,
+    backgroundColor: colors.surfaceContainerLow,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  filterInfoText: {
+    flex: 1,
+    color: colors.primary,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '700',
+  },
+  segment: {
+    flexDirection: 'row',
+    backgroundColor: colors.surfaceContainerHigh,
+    borderRadius: 14,
+    padding: 4,
+    marginBottom: 18,
+  },
+  segmentButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentButtonActive: {
+    backgroundColor: colors.surfaceContainerLowest,
+  },
+  segmentText: {
+    color: colors.onSurfaceVariant,
+    fontWeight: '800',
+  },
+  segmentTextActive: {
+    color: colors.primary,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 18,
+  },
+  statCard: {
+    flex: 1,
+    minHeight: 78,
+    borderRadius: 16,
+    backgroundColor: colors.surfaceContainerLowest,
+    borderWidth: 1,
+    borderColor: 'rgba(195,198,215,0.28)',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    justifyContent: 'center',
+  },
+  statLabel: {
+    color: colors.onSurfaceVariant,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  statValue: {
+    marginTop: 5,
+    fontSize: 24,
+    lineHeight: 30,
+    fontWeight: '900',
   },
   primaryButton: {
-    marginTop: 32,
-    height: 74,
+    height: 64,
     borderRadius: 14,
     backgroundColor: colors.primaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 14,
-    shadowColor: colors.primaryContainer,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.22,
-    shadowRadius: 16,
-    elevation: 5,
+    marginBottom: 22,
   },
   disabledCreateButton: {
     opacity: 0.55,
@@ -674,48 +757,18 @@ const styles = StyleSheet.create({
     fontSize: 18,
     lineHeight: 24,
     fontWeight: '900',
-    letterSpacing: 0.8,
+    letterSpacing: 0.4,
   },
   pressed: {
     transform: [{ scale: 0.98 }],
   },
-  loadingArea: {
-    paddingVertical: 60,
-    alignItems: 'center',
-    gap: 12,
-  },
-  loadingText: {
-    color: colors.onSurfaceVariant,
-    fontWeight: '700',
-  },
-  emptyCard: {
-    marginTop: 32,
-    backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: 18,
-    padding: 24,
-    alignItems: 'center',
-    gap: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(195, 198, 215, 0.3)',
-  },
-  emptyTitle: {
-    color: colors.onSurface,
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  emptyText: {
-    color: colors.onSurfaceVariant,
-    textAlign: 'center',
-    lineHeight: 21,
-  },
   listArea: {
-    marginTop: 32,
-    gap: 20,
+    gap: 16,
   },
   leaveCard: {
     backgroundColor: colors.surfaceContainerLowest,
     borderRadius: 16,
-    padding: 22,
+    padding: 20,
     borderWidth: 1,
     borderColor: 'rgba(195, 198, 215, 0.3)',
     shadowColor: '#1E293B',
@@ -724,117 +777,71 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 2,
   },
-  approvedCard: {
-    opacity: 0.96,
-  },
   cardPressed: {
     transform: [{ scale: 0.99 }],
   },
   cardStatusArea: {
     position: 'absolute',
-    top: 20,
-    right: 20,
+    top: 18,
+    right: 18,
     zIndex: 2,
   },
   cardMainRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    gap: 18,
+    gap: 16,
   },
   leaveIconBox: {
-    width: 64,
-    height: 64,
-    borderRadius: 12,
+    width: 56,
+    height: 56,
+    borderRadius: 14,
     backgroundColor: 'rgba(219, 225, 255, 0.55)',
     alignItems: 'center',
     justifyContent: 'center',
   },
   leaveContent: {
     flex: 1,
-    paddingRight: 108,
+    paddingRight: 104,
   },
   leaveTitle: {
     color: colors.onSurface,
-    fontSize: 18,
-    lineHeight: 24,
+    fontSize: 17,
+    lineHeight: 23,
     fontWeight: '900',
   },
   leaveDate: {
-    marginTop: 6,
+    marginTop: 5,
     color: colors.onSurfaceVariant,
-    fontSize: 16,
-    lineHeight: 22,
+    fontSize: 15,
+    lineHeight: 21,
+    fontWeight: '600',
   },
   employeeText: {
     marginTop: 5,
     color: colors.secondary,
     fontSize: 12,
+    lineHeight: 17,
     fontWeight: '700',
   },
   cardDivider: {
-    marginTop: 18,
+    marginTop: 16,
     height: 1,
     backgroundColor: 'rgba(195, 198, 215, 0.35)',
   },
   durationRow: {
-    paddingTop: 14,
+    paddingTop: 13,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
   durationLabel: {
     color: colors.secondary,
-    fontSize: 14,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '800',
   },
   durationValue: {
     color: colors.onSurface,
     fontWeight: '900',
-  },
-  statusBadge: {
-    minHeight: 32,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-  },
-  statusText: {
-    fontSize: 13,
-    fontWeight: '800',
-  },
-  policyCard: {
-    marginTop: 34,
-    borderRadius: 24,
-    backgroundColor: 'rgba(255,255,255,0.75)',
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.55)',
-    padding: 28,
-    flexDirection: 'row',
-    gap: 18,
-    shadowColor: '#1E293B',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.04,
-    shadowRadius: 18,
-    elevation: 2,
-  },
-  policyIcon: {
-    paddingTop: 2,
-  },
-  policyTextArea: {
-    flex: 1,
-    gap: 10,
-  },
-  policyTitle: {
-    color: colors.primary,
-    fontSize: 17,
-    fontWeight: '900',
-    letterSpacing: 0.8,
-  },
-  policyText: {
-    color: colors.onSecondaryFixedVariant,
-    fontSize: 16,
-    lineHeight: 24,
   },
   modalBackdrop: {
     flex: 1,
@@ -896,52 +903,5 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     opacity: 0.7,
-  },
-  detailRow: {
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(195,198,215,0.35)',
-  },
-  detailLabel: {
-    color: colors.onSurfaceVariant,
-    fontSize: 12,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  detailValue: {
-    marginTop: 4,
-    color: colors.onSurface,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  actionRow: {
-    marginTop: 12,
-    flexDirection: 'row',
-    gap: 12,
-  },
-  rejectButton: {
-    flex: 1,
-    height: 54,
-    borderRadius: 14,
-    backgroundColor: colors.errorContainer,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rejectButtonText: {
-    color: colors.onErrorContainer,
-    fontWeight: '900',
-  },
-  approveButton: {
-    flex: 1,
-    height: 54,
-    borderRadius: 14,
-    backgroundColor: colors.primaryContainer,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  approveButtonText: {
-    color: colors.onPrimary,
-    fontWeight: '900',
   },
 });

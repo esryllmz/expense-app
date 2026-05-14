@@ -5,33 +5,71 @@ import {
   Modal,
   Pressable,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+
 import { colors } from '../../../core/theme/colors';
 import { AppHeader } from '../../../shared/components/AppHeader';
+import { LoadingView } from '../../../components/common/LoadingView';
+import { EmptyState } from '../../../components/common/EmptyState';
+import { ApprovalModal } from '../../../components/common/ApprovalModal';
+import { StatusBadge } from '../../../components/common/StatusBadge';
+import { getApiErrorMessage } from '../../../core/api/apiError';
+import {
+  canApproveRequest,
+  canCreateOwnRequest,
+  isGM,
+  isTeamLead,
+} from '../../../core/utils/permissions';
+import { formatCurrency, formatDate } from '../../../core/utils/formatters';
+
 import { useAuthContext } from '../../auth/context/AuthContext';
 import { expenseService } from '../services/expenseService';
 import type { Expense, RequestStatus } from '../types/expenseTypes';
-import {
-  formatCurrency,
-  formatDate,
-  getStatusLabel,
-} from '../../../core/utils/formatters';
+
+type ExpenseViewMode = 'APPROVALS' | 'MINE';
+
+const getStatusPriority = (status: RequestStatus) => {
+  switch (status) {
+    case 'PENDING':
+      return 0;
+    case 'APPROVED':
+      return 1;
+    case 'REJECTED':
+      return 2;
+    default:
+      return 3;
+  }
+};
+
+const sortExpenses = (items: Expense[]) => {
+  return [...items].sort((first, second) => {
+    const statusDiff =
+      getStatusPriority(first.status) - getStatusPriority(second.status);
+
+    if (statusDiff !== 0) {
+      return statusDiff;
+    }
+
+    const firstDate = new Date(first.createdDate).getTime();
+    const secondDate = new Date(second.createdDate).getTime();
+
+    return secondDate - firstDate;
+  });
+};
 
 export const ExpenseScreen = () => {
   const { user } = useAuthContext();
 
-  const isManager =
-    user?.role === 'ROLE_GM' || user?.role === 'ROLE_TEAM_LEADER';
-
-  const canCreateExpense =
-    user?.role === 'ROLE_EMPLOYEE' && user?.managerId != null;
+  const [viewMode, setViewMode] = useState<ExpenseViewMode>(
+    user?.role === 'ROLE_TEAM_LEADER' ? 'APPROVALS' : 'MINE'
+  );
 
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,19 +79,30 @@ export const ExpenseScreen = () => {
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
   const [actionLoading, setActionLoading] = useState(false);
 
+  const isGeneralManager = isGM(user?.role);
+  const isLead = isTeamLead(user?.role);
+
+  const shouldLoadSubordinates =
+    isGeneralManager || (isLead && viewMode === 'APPROVALS');
+
+  const canCreateExpense =
+    canCreateOwnRequest(user?.role) &&
+    !isGeneralManager &&
+    viewMode === 'MINE' &&
+    user?.managerId != null;
+
   const loadExpenses = async () => {
     try {
-      const response = isManager
-        ? await expenseService.getSubordinateExpenses()
-        : await expenseService.getMyExpenses();
+      const response = shouldLoadSubordinates
+        ? await expenseService.getSubordinates()
+        : await expenseService.getMine();
 
       setExpenses(response.data || []);
-    } catch (error: any) {
-      const message =
-        error?.response?.data?.message ||
-        'Harcama talepleri alınamadı. Backend bağlantısını kontrol edin.';
-
-      Alert.alert('Hata', message);
+    } catch (error) {
+      Alert.alert(
+        'Hata',
+        getApiErrorMessage(error, 'Harcama talepleri alınamadı.')
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -61,21 +110,43 @@ export const ExpenseScreen = () => {
   };
 
   useEffect(() => {
+    setLoading(true);
     loadExpenses();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.role]);
+  }, [user?.role, viewMode]);
 
-  const pendingAmount = useMemo(() => {
-    return expenses
-      .filter((expense) => expense.status === 'PENDING')
-      .reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+  const sortedExpenses = useMemo(() => {
+    return sortExpenses(expenses);
   }, [expenses]);
 
-  const approvedAmount = useMemo(() => {
-    return expenses
-      .filter((expense) => expense.status === 'APPROVED')
-      .reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+  const pendingCount = useMemo(() => {
+    return expenses.filter((expense) => expense.status === 'PENDING').length;
   }, [expenses]);
+
+  const approvedCount = useMemo(() => {
+    return expenses.filter((expense) => expense.status === 'APPROVED').length;
+  }, [expenses]);
+
+  const rejectedCount = useMemo(() => {
+    return expenses.filter((expense) => expense.status === 'REJECTED').length;
+  }, [expenses]);
+
+  const selectedCanAct = selectedExpense
+    ? canApproveRequest({
+        role: user?.role,
+        currentUserId: user?.id,
+        employeeId: selectedExpense.employeeId,
+        status: selectedExpense.status,
+      })
+    : false;
+
+  const headerTitle = shouldLoadSubordinates
+    ? 'Harcama Talepleri'
+    : 'Harcama Taleplerim';
+
+  const headerDescription = shouldLoadSubordinates
+    ? `Toplam ${expenses.length} bağlı personel talebi`
+    : `Toplam ${expenses.length} harcama talebiniz var`;
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -83,18 +154,10 @@ export const ExpenseScreen = () => {
   };
 
   const handleCreatePress = () => {
-    if (isManager) {
-      Alert.alert(
-        'Yetkisiz işlem',
-        'Yöneticiler bu ekrandan kendi adına harcama talebi oluşturamaz.'
-      );
-      return;
-    }
-
     if (!canCreateExpense) {
       Alert.alert(
-        'Yönetici ataması gerekli',
-        'Harcama talebi oluşturabilmek için önce bir yöneticiniz atanmalıdır.'
+        'Yetkisiz işlem',
+        'Talep oluşturmak için uygun rol ve yönetici ataması gerekir.'
       );
       return;
     }
@@ -111,24 +174,35 @@ export const ExpenseScreen = () => {
     try {
       const response = await expenseService.updateStatus(expenseId, status);
 
-      if (response.success) {
-        setSelectedExpense(null);
-        await loadExpenses();
+      if (!response.success) {
+        Alert.alert('Hata', response.message || 'Harcama durumu güncellenemedi.');
+        return;
       }
-    } catch (error: any) {
-      const message =
-        error?.response?.data?.message ||
-        'Harcama durumu güncellenemedi.';
 
-      Alert.alert('Hata', message);
+      setSelectedExpense(null);
+      await loadExpenses();
+    } catch (error) {
+      Alert.alert(
+        'Hata',
+        getApiErrorMessage(error, 'Harcama durumu güncellenemedi.')
+      );
     } finally {
       setActionLoading(false);
     }
   };
 
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.root}>
+        <AppHeader />
+        <LoadingView text="Harcamalar yükleniyor..." />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.root}>
-      <AppHeader showSearch />
+      <AppHeader />
 
       <ScrollView
         style={styles.scroll}
@@ -142,32 +216,69 @@ export const ExpenseScreen = () => {
         }
       >
         <View style={styles.headerSection}>
-          <Text style={styles.title}>
-            {isManager ? 'Harcama Talepleri' : 'Harcama Taleplerim'}
-          </Text>
-
-          <Text style={styles.subtitle}>
-            {isManager
-              ? `Toplam ${expenses.length} bağlı personel talebi`
-              : `Bu ay toplam ${expenses.length} talep`}
-          </Text>
+          <Text style={styles.title}>{headerTitle}</Text>
+          <Text style={styles.subtitle}>{headerDescription}</Text>
         </View>
+
+        {isLead && (
+          <View style={styles.segment}>
+            <Pressable
+              onPress={() => setViewMode('APPROVALS')}
+              style={[
+                styles.segmentButton,
+                viewMode === 'APPROVALS' && styles.segmentButtonActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.segmentText,
+                  viewMode === 'APPROVALS' && styles.segmentTextActive,
+                ]}
+              >
+                Onay Talepleri
+              </Text>
+            </Pressable>
+
+            <Pressable
+              onPress={() => setViewMode('MINE')}
+              style={[
+                styles.segmentButton,
+                viewMode === 'MINE' && styles.segmentButtonActive,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.segmentText,
+                  viewMode === 'MINE' && styles.segmentTextActive,
+                ]}
+              >
+                Benim Taleplerim
+              </Text>
+            </Pressable>
+          </View>
+        )}
 
         <View style={styles.statsRow}>
           <StatCard
-            title="Onay Bekleyen"
-            value={formatCurrency(pendingAmount)}
-            valueColor={colors.primary}
+            title="Bekleyen"
+            value={pendingCount}
+            valueColor={colors.warning}
           />
 
           <StatCard
             title="Onaylanan"
-            value={formatCurrency(approvedAmount)}
-            valueColor={colors.tertiary}
+            value={approvedCount}
+            valueColor={colors.success}
+          />
+
+          <StatCard
+            title="Reddedilen"
+            value={rejectedCount}
+            valueColor={colors.error}
           />
         </View>
 
-        {!isManager && (
+        {!isGeneralManager && viewMode === 'MINE' && (
           <Pressable
             onPress={handleCreatePress}
             style={({ pressed }) => [
@@ -176,37 +287,28 @@ export const ExpenseScreen = () => {
               !canCreateExpense && styles.disabledCreateButton,
             ]}
           >
-            <Ionicons name="add" size={30} color={colors.onPrimary} />
-            <Text style={styles.primaryButtonText}>Yeni Harcama</Text>
+            <Ionicons name="add" size={28} color={colors.onPrimary} />
+            <Text style={styles.primaryButtonText}>Yeni Harcama Talebi</Text>
           </Pressable>
         )}
 
-        {loading ? (
-          <View style={styles.loadingArea}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.loadingText}>Harcamalar yükleniyor...</Text>
-          </View>
-        ) : expenses.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <MaterialCommunityIcons
-              name="receipt-text-outline"
-              size={36}
-              color={colors.primary}
-            />
-            <Text style={styles.emptyTitle}>Harcama talebi bulunamadı</Text>
-            <Text style={styles.emptyText}>
-              {isManager
+        {sortedExpenses.length === 0 ? (
+          <EmptyState
+            icon="receipt-outline"
+            title="Harcama talebi bulunamadı"
+            description={
+              shouldLoadSubordinates
                 ? 'Bağlı çalışanlarınıza ait harcama talebi bulunmuyor.'
-                : 'Yeni harcama talebi oluşturarak süreci başlatabilirsiniz.'}
-            </Text>
-          </View>
+                : 'Yeni harcama talebi oluşturarak süreci başlatabilirsiniz.'
+            }
+          />
         ) : (
           <View style={styles.listArea}>
-            {expenses.map((expense) => (
+            {sortedExpenses.map((expense) => (
               <ExpenseCard
                 key={expense.id}
                 expense={expense}
-                isManager={isManager}
+                showEmployee={shouldLoadSubordinates}
                 onPress={() => setSelectedExpense(expense)}
               />
             ))}
@@ -214,7 +316,7 @@ export const ExpenseScreen = () => {
         )}
       </ScrollView>
 
-      {!isManager && (
+      {!isGeneralManager && viewMode === 'MINE' && (
         <Pressable
           onPress={handleCreatePress}
           style={({ pressed }) => [
@@ -224,8 +326,8 @@ export const ExpenseScreen = () => {
           ]}
         >
           <MaterialCommunityIcons
-            name="receipt-text-outline"
-            size={30}
+            name="receipt-text-plus-outline"
+            size={28}
             color={colors.onPrimary}
           />
         </Pressable>
@@ -240,9 +342,11 @@ export const ExpenseScreen = () => {
         }}
       />
 
-      <ExpenseDetailModal
-        expense={selectedExpense}
-        isManager={isManager}
+      <ApprovalModal
+        visible={!!selectedExpense}
+        type="EXPENSE"
+        item={selectedExpense}
+        canAct={selectedCanAct}
         loading={actionLoading}
         onClose={() => setSelectedExpense(null)}
         onApprove={() =>
@@ -262,44 +366,42 @@ const StatCard = ({
   valueColor,
 }: {
   title: string;
-  value: string;
+  value: number;
   valueColor: string;
 }) => {
   return (
     <View style={styles.statCard}>
       <Text style={styles.statTitle}>{title}</Text>
-      <Text style={[styles.statValue, { color: valueColor }]}>
-        {value}
-      </Text>
+      <Text style={[styles.statValue, { color: valueColor }]}>{value}</Text>
     </View>
   );
 };
 
 const ExpenseCard = ({
   expense,
-  isManager,
+  showEmployee,
   onPress,
 }: {
   expense: Expense;
-  isManager: boolean;
+  showEmployee: boolean;
   onPress: () => void;
 }) => {
-  const config = getExpenseVisualConfig(expense);
+  const isPending = expense.status === 'PENDING';
 
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [
         styles.expenseCard,
+        isPending && styles.pendingExpenseCard,
         pressed && styles.cardPressed,
-        expense.status === 'REJECTED' && styles.rejectedCard,
       ]}
     >
-      <View style={[styles.expenseIconBox, { backgroundColor: config.iconBg }]}>
+      <View style={[styles.expenseIconBox, isPending && styles.pendingIconBox]}>
         <Ionicons
-          name={config.icon}
-          size={30}
-          color={config.iconColor}
+          name={isPending ? 'time-outline' : 'receipt-outline'}
+          size={27}
+          color={isPending ? colors.warning : colors.primary}
         />
       </View>
 
@@ -309,18 +411,14 @@ const ExpenseCard = ({
             {expense.description || 'Harcama Talebi'}
           </Text>
 
-          <Text style={styles.amountText}>
-            {formatCurrency(expense.amount)}
-          </Text>
+          <Text style={styles.amountText}>{formatCurrency(expense.amount)}</Text>
         </View>
 
         <View style={styles.expenseBottomRow}>
           <View style={styles.expenseMetaArea}>
-            <Text style={styles.dateText}>
-              {formatDate(expense.createdDate)}
-            </Text>
+            <Text style={styles.dateText}>{formatDate(expense.createdDate)}</Text>
 
-            {isManager && (
+            {showEmployee && (
               <Text style={styles.employeeText} numberOfLines={1}>
                 {expense.employeeFullName}
               </Text>
@@ -331,18 +429,6 @@ const ExpenseCard = ({
         </View>
       </View>
     </Pressable>
-  );
-};
-
-const StatusBadge = ({ status }: { status: RequestStatus }) => {
-  const config = getStatusConfig(status);
-
-  return (
-    <View style={[styles.statusBadge, { backgroundColor: config.bg }]}>
-      <Text style={[styles.statusText, { color: config.color }]}>
-        {config.label}
-      </Text>
-    </View>
   );
 };
 
@@ -358,6 +444,16 @@ const CreateExpenseModal = ({
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [loading, setLoading] = useState(false);
+
+  const resetForm = () => {
+    setDescription('');
+    setAmount('');
+  };
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
 
   const handleCreate = async () => {
     const parsedAmount = Number(amount.replace(',', '.'));
@@ -375,22 +471,23 @@ const CreateExpenseModal = ({
     setLoading(true);
 
     try {
-      const response = await expenseService.createExpense({
+      const response = await expenseService.create({
         description: description.trim(),
         amount: parsedAmount,
       });
 
-      if (response.success) {
-        setDescription('');
-        setAmount('');
-        onSuccess();
+      if (!response.success) {
+        Alert.alert('Hata', response.message || 'Harcama talebi oluşturulamadı.');
+        return;
       }
-    } catch (error: any) {
-      const message =
-        error?.response?.data?.message ||
-        'Harcama talebi oluşturulamadı.';
 
-      Alert.alert('Hata', message);
+      resetForm();
+      onSuccess();
+    } catch (error) {
+      Alert.alert(
+        'Hata',
+        getApiErrorMessage(error, 'Harcama talebi oluşturulamadı.')
+      );
     } finally {
       setLoading(false);
     }
@@ -401,10 +498,14 @@ const CreateExpenseModal = ({
       <View style={styles.modalBackdrop}>
         <View style={styles.modalCard}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Yeni Harcama</Text>
+            <Text style={styles.modalTitle}>Yeni Harcama Talebi</Text>
 
-            <Pressable onPress={onClose}>
-              <Ionicons name="close" size={24} color={colors.onSurfaceVariant} />
+            <Pressable onPress={handleClose}>
+              <Ionicons
+                name="close"
+                size={24}
+                color={colors.onSurfaceVariant}
+              />
             </Pressable>
           </View>
 
@@ -430,7 +531,10 @@ const CreateExpenseModal = ({
           <Pressable
             disabled={loading}
             onPress={handleCreate}
-            style={[styles.modalPrimaryButton, loading && styles.disabledButton]}
+            style={[
+              styles.modalPrimaryButton,
+              loading && styles.disabledButton,
+            ]}
           >
             {loading ? (
               <ActivityIndicator color={colors.onPrimary} />
@@ -444,298 +548,149 @@ const CreateExpenseModal = ({
   );
 };
 
-const ExpenseDetailModal = ({
-  expense,
-  isManager,
-  loading,
-  onClose,
-  onApprove,
-  onReject,
-}: {
-  expense: Expense | null;
-  isManager: boolean;
-  loading: boolean;
-  onClose: () => void;
-  onApprove: () => void;
-  onReject: () => void;
-}) => {
-  if (!expense) return null;
-
-  const canAct = isManager && expense.status === 'PENDING';
-
-  return (
-    <Modal visible={!!expense} transparent animationType="fade">
-      <View style={styles.modalBackdrop}>
-        <View style={styles.modalCard}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Harcama Detayı</Text>
-
-            <Pressable onPress={onClose}>
-              <Ionicons name="close" size={24} color={colors.onSurfaceVariant} />
-            </Pressable>
-          </View>
-
-          <DetailRow label="Talep Sahibi" value={expense.employeeFullName || '-'} />
-          <DetailRow label="Açıklama" value={expense.description || '-'} />
-          <DetailRow label="Tutar" value={formatCurrency(expense.amount)} />
-          <DetailRow label="Tarih" value={formatDate(expense.createdDate)} />
-          <DetailRow label="Durum" value={getStatusLabel(expense.status)} />
-
-          {canAct && (
-            <View style={styles.actionRow}>
-              <Pressable
-                disabled={loading}
-                onPress={onReject}
-                style={[styles.rejectButton, loading && styles.disabledButton]}
-              >
-                <Text style={styles.rejectButtonText}>Reddet</Text>
-              </Pressable>
-
-              <Pressable
-                disabled={loading}
-                onPress={onApprove}
-                style={[styles.approveButton, loading && styles.disabledButton]}
-              >
-                <Text style={styles.approveButtonText}>Onayla</Text>
-              </Pressable>
-            </View>
-          )}
-        </View>
-      </View>
-    </Modal>
-  );
-};
-
-const DetailRow = ({ label, value }: { label: string; value: string }) => {
-  return (
-    <View style={styles.detailRow}>
-      <Text style={styles.detailLabel}>{label}</Text>
-      <Text style={styles.detailValue}>{value}</Text>
-    </View>
-  );
-};
-
-const getStatusConfig = (status: RequestStatus) => {
-  switch (status) {
-    case 'APPROVED':
-      return {
-        label: 'ONAYLANDI',
-        bg: '#D1FAE5',
-        color: '#047857',
-      };
-    case 'REJECTED':
-      return {
-        label: 'REDDEDİLDİ',
-        bg: colors.errorContainer,
-        color: colors.onErrorContainer,
-      };
-    case 'PENDING':
-    default:
-      return {
-        label: 'BEKLEMEDE',
-        bg: colors.surfaceContainerHigh,
-        color: colors.onSurfaceVariant,
-      };
-  }
-};
-
-const getExpenseVisualConfig = (expense: Expense) => {
-  const text = expense.description.toLocaleLowerCase('tr-TR');
-
-  if (text.includes('yemek') || text.includes('restoran')) {
-    return {
-      icon: 'restaurant-outline' as const,
-      iconBg: 'rgba(148,55,0,0.10)',
-      iconColor: colors.tertiary,
-    };
-  }
-
-  if (text.includes('taksi') || text.includes('yol') || text.includes('ulaşım')) {
-    return {
-      icon: 'car-outline' as const,
-      iconBg: 'rgba(88,99,119,0.12)',
-      iconColor: colors.secondary,
-    };
-  }
-
-  if (text.includes('internet') || text.includes('fatura')) {
-    return {
-      icon: 'wifi-outline' as const,
-      iconBg: 'rgba(148,55,0,0.10)',
-      iconColor: colors.tertiary,
-    };
-  }
-
-  if (text.includes('konaklama') || text.includes('uçak') || text.includes('seyahat')) {
-    return {
-      icon: 'airplane-outline' as const,
-      iconBg: 'rgba(0,74,198,0.10)',
-      iconColor: colors.primary,
-    };
-  }
-
-  if (text.includes('ofis') || text.includes('malzeme')) {
-    return {
-      icon: 'receipt-outline' as const,
-      iconBg: 'rgba(186,26,26,0.10)',
-      iconColor: colors.error,
-    };
-  }
-
-  return {
-    icon: 'receipt-outline' as const,
-    iconBg: 'rgba(0,74,198,0.10)',
-    iconColor: colors.primary,
-  };
-};
-
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: colors.background ?? colors.surface,
+    backgroundColor: colors.background,
   },
   scroll: {
     flex: 1,
   },
   content: {
-    paddingHorizontal: 28,
-    paddingTop: 42,
+    paddingHorizontal: 20,
+    paddingTop: 22,
     paddingBottom: 120,
   },
   headerSection: {
-    marginBottom: 34,
+    marginBottom: 20,
   },
   title: {
     color: colors.onSurface,
-    fontSize: 32,
+    fontSize: 30,
     lineHeight: 38,
     fontWeight: '900',
   },
   subtitle: {
-    marginTop: 6,
+    marginTop: 4,
     color: colors.onSurfaceVariant,
-    fontSize: 18,
-    lineHeight: 26,
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: '600',
+  },
+  segment: {
+    flexDirection: 'row',
+    backgroundColor: colors.surfaceContainerHigh,
+    borderRadius: 14,
+    padding: 4,
+    marginBottom: 20,
+  },
+  segmentButton: {
+    flex: 1,
+    minHeight: 44,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  segmentButtonActive: {
+    backgroundColor: colors.surfaceContainerLowest,
+  },
+  segmentText: {
+    color: colors.onSurfaceVariant,
+    fontWeight: '800',
+  },
+  segmentTextActive: {
+    color: colors.primary,
   },
   statsRow: {
     flexDirection: 'row',
-    gap: 28,
-    marginBottom: 42,
+    gap: 10,
+    marginBottom: 22,
   },
   statCard: {
     flex: 1,
-    minHeight: 142,
-    borderRadius: 18,
+    minHeight: 94,
+    borderRadius: 16,
     backgroundColor: colors.surfaceContainerLowest,
-    padding: 26,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: 'rgba(195,198,215,0.32)',
     shadowColor: '#1E293B',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 20,
-    elevation: 2,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
+    elevation: 1,
   },
   statTitle: {
     color: colors.onSecondaryContainer,
-    fontSize: 16,
-    lineHeight: 22,
-    fontWeight: '700',
-    marginBottom: 12,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '800',
   },
   statValue: {
-    fontSize: 31,
-    lineHeight: 38,
+    marginTop: 8,
+    fontSize: 27,
+    lineHeight: 32,
     fontWeight: '900',
   },
   primaryButton: {
-    height: 84,
+    height: 64,
     borderRadius: 16,
     backgroundColor: colors.primaryContainer,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
-    gap: 18,
-    marginBottom: 68,
-    shadowColor: colors.primaryContainer,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.25,
-    shadowRadius: 18,
-    elevation: 6,
+    gap: 12,
+    marginBottom: 24,
   },
   disabledCreateButton: {
     opacity: 0.55,
   },
   primaryButtonText: {
     color: colors.onPrimary,
-    fontSize: 20,
-    lineHeight: 26,
+    fontSize: 17,
+    lineHeight: 24,
     fontWeight: '900',
-    letterSpacing: 0.5,
   },
   pressed: {
     transform: [{ scale: 0.98 }],
   },
-  loadingArea: {
-    paddingVertical: 60,
-    alignItems: 'center',
-    gap: 12,
-  },
-  loadingText: {
-    color: colors.onSurfaceVariant,
-    fontWeight: '700',
-  },
-  emptyCard: {
-    backgroundColor: colors.surfaceContainerLowest,
-    borderRadius: 18,
-    padding: 24,
-    alignItems: 'center',
-    gap: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(195, 198, 215, 0.3)',
-  },
-  emptyTitle: {
-    color: colors.onSurface,
-    fontSize: 18,
-    fontWeight: '900',
-  },
-  emptyText: {
-    color: colors.onSurfaceVariant,
-    textAlign: 'center',
-    lineHeight: 21,
-  },
   listArea: {
-    gap: 28,
+    gap: 14,
   },
   expenseCard: {
-    minHeight: 134,
+    minHeight: 112,
     backgroundColor: colors.surfaceContainerLowest,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: 'rgba(195,198,215,0.32)',
-    padding: 26,
+    padding: 18,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 26,
+    gap: 16,
     shadowColor: '#1E293B',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.05,
-    shadowRadius: 20,
+    shadowRadius: 14,
     elevation: 2,
   },
-  rejectedCard: {
-    opacity: 0.9,
+  pendingExpenseCard: {
+    borderColor: 'rgba(245,158,11,0.42)',
   },
   cardPressed: {
     transform: [{ scale: 0.99 }],
   },
   expenseIconBox: {
-    width: 80,
-    height: 80,
-    borderRadius: 12,
+    width: 58,
+    height: 58,
+    borderRadius: 14,
+    backgroundColor: 'rgba(0,74,198,0.10)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  pendingIconBox: {
+    backgroundColor: 'rgba(245,158,11,0.14)',
   },
   expenseContent: {
     flex: 1,
@@ -745,38 +700,36 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
-    gap: 14,
+    gap: 12,
   },
   expenseTitle: {
     flex: 1,
     color: colors.onSurface,
-    fontSize: 20,
-    lineHeight: 26,
-    fontWeight: '900',
-    letterSpacing: 0.8,
-  },
-  amountText: {
-    color: colors.onSurface,
-    fontSize: 18,
+    fontSize: 17,
     lineHeight: 24,
     fontWeight: '900',
   },
+  amountText: {
+    color: colors.onSurface,
+    fontSize: 15,
+    lineHeight: 22,
+    fontWeight: '900',
+  },
   expenseBottomRow: {
-    marginTop: 10,
+    marginTop: 8,
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: 10,
   },
   expenseMetaArea: {
     flex: 1,
   },
   dateText: {
     color: colors.onSurfaceVariant,
-    fontSize: 17,
-    lineHeight: 23,
-    fontStyle: 'italic',
-    fontWeight: '500',
+    fontSize: 13,
+    lineHeight: 20,
+    fontWeight: '600',
   },
   employeeText: {
     marginTop: 3,
@@ -784,33 +737,21 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
   },
-  statusBadge: {
-    minHeight: 28,
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '900',
-    letterSpacing: 1,
-  },
   fab: {
     position: 'absolute',
-    right: 28,
-    bottom: 104,
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    right: 24,
+    bottom: 100,
+    width: 66,
+    height: 66,
+    borderRadius: 33,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.28,
-    shadowRadius: 18,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.22,
+    shadowRadius: 14,
+    elevation: 6,
   },
   disabledFab: {
     opacity: 0.55,
@@ -870,52 +811,5 @@ const styles = StyleSheet.create({
   },
   disabledButton: {
     opacity: 0.7,
-  },
-  detailRow: {
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(195,198,215,0.35)',
-  },
-  detailLabel: {
-    color: colors.onSurfaceVariant,
-    fontSize: 12,
-    fontWeight: '800',
-    textTransform: 'uppercase',
-    letterSpacing: 0.8,
-  },
-  detailValue: {
-    marginTop: 4,
-    color: colors.onSurface,
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  actionRow: {
-    marginTop: 12,
-    flexDirection: 'row',
-    gap: 12,
-  },
-  rejectButton: {
-    flex: 1,
-    height: 54,
-    borderRadius: 14,
-    backgroundColor: colors.errorContainer,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  rejectButtonText: {
-    color: colors.onErrorContainer,
-    fontWeight: '900',
-  },
-  approveButton: {
-    flex: 1,
-    height: 54,
-    borderRadius: 14,
-    backgroundColor: colors.primaryContainer,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  approveButtonText: {
-    color: colors.onPrimary,
-    fontWeight: '900',
   },
 });

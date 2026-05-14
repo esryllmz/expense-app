@@ -72,7 +72,7 @@ export const ExpenseModal = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-on-surface/30 backdrop-blur-sm animate-in fade-in duration-300">
-      <div className="bg-white w-full max-w-md rounded-[2rem] shadow-2xl border border-outline-variant/20 overflow-hidden animate-in zoom-in-95 duration-300">
+      <div className="bg-white w-full max-w-md rounded-4xl shadow-2xl border border-outline-variant/20 overflow-hidden animate-in zoom-in-95 duration-300">
         <div className="p-8 border-b border-surface-container flex justify-between items-center">
           <h2 className="text-xl font-black text-on-surface tracking-tight">
             Yeni Masraf Talebi

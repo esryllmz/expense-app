@@ -15,7 +15,8 @@ import {
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useMutation } from '@tanstack/react-query';
 import { colors } from '../../../core/theme/colors';
-import { tokenStorage } from '../../../core/storage/tokenStorage';
+import { tokenStorage } from '../../../core/auth/tokenStorage';
+import { getApiErrorMessage } from '../../../core/api/apiError';
 import { authService } from '../services/authService';
 import { useAuthContext } from '../context/AuthContext';
 import type {
@@ -47,24 +48,23 @@ export const AuthScreen = () => {
   const loginMutation = useMutation<ApiResponse<AuthResponse>, unknown, LoginRequest>({
     mutationFn: authService.login,
     onSuccess: async (response) => {
-    if (!response.success || !response.data) {
-      Alert.alert('Giriş başarısız', response.message || 'Bilgileri kontrol edin.');
-      return;
-    }
+      if (!response.success || !response.data) {
+        Alert.alert('Giriş başarısız', response.message || 'Bilgileri kontrol edin.');
+        return;
+      }
 
-    await tokenStorage.setAccessToken(response.data.accessToken);
-    await tokenStorage.setRefreshToken(response.data.refreshToken);
-    await tokenStorage.setUser(response.data.user);
-
-    await signIn(response.data.user);
+      await tokenStorage.setSession(response.data);
+      await signIn(response.data.user);
     },
-      onError: (error: any) => {
-        const message =
-          error?.response?.data?.message ||
-          'Sunucu ile iletişim kurulamadı. Backend çalışıyor mu kontrol edin.';
-
-        Alert.alert('Giriş başarısız', message);
-      },
+    onError: (error) => {
+      Alert.alert(
+        'Giriş başarısız',
+        getApiErrorMessage(
+          error,
+          'Sunucu ile iletişim kurulamadı. Backend çalışıyor mu kontrol edin.'
+        )
+      );
+    },
   });
 
   const registerMutation = useMutation<ApiResponse<null>, unknown, RegisterRequest>({
@@ -82,12 +82,11 @@ export const AuthScreen = () => {
         password: registerForm.password,
       });
     },
-    onError: (error: any) => {
-      const message =
-        error?.response?.data?.message ||
-        'Kayıt sırasında bir hata oluştu.';
-
-      Alert.alert('Kayıt başarısız', message);
+    onError: (error) => {
+      Alert.alert(
+        'Kayıt başarısız',
+        getApiErrorMessage(error, 'Kayıt sırasında bir hata oluştu.')
+      );
     },
   });
 
@@ -96,7 +95,7 @@ export const AuthScreen = () => {
 
   const handleSubmit = () => {
     if (isLogin) {
-      if (!loginForm.email || !loginForm.password) {
+      if (!loginForm.email.trim() || !loginForm.password) {
         Alert.alert('Eksik bilgi', 'E-posta ve şifre alanları zorunludur.');
         return;
       }
@@ -110,9 +109,9 @@ export const AuthScreen = () => {
     }
 
     if (
-      !registerForm.firstName ||
-      !registerForm.lastName ||
-      !registerForm.email ||
+      !registerForm.firstName.trim() ||
+      !registerForm.lastName.trim() ||
+      !registerForm.email.trim() ||
       !registerForm.password
     ) {
       Alert.alert('Eksik bilgi', 'Tüm alanları doldurun.');
@@ -127,7 +126,6 @@ export const AuthScreen = () => {
     });
   };
 
-  
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
@@ -139,19 +137,22 @@ export const AuthScreen = () => {
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          <Header />
+          <View style={styles.header}>
+            <MaterialCommunityIcons
+              name="wallet-outline"
+              size={34}
+              color={colors.primary}
+            />
+            <Text style={styles.brandText}>CapitalFlow</Text>
+          </View>
 
           <View style={styles.heroBackground}>
-            <View style={styles.blurCircleOne} />
-            <View style={styles.blurCircleTwo} />
-
             <View style={styles.card}>
               <View style={styles.cardBody}>
                 <View style={styles.titleArea}>
                   <Text style={styles.title}>
                     {isLogin ? 'Welcome Back' : 'Register your team'}
                   </Text>
-
                   <Text style={styles.subtitle}>
                     {isLogin
                       ? 'Access your corporate financial dashboard'
@@ -165,10 +166,7 @@ export const AuthScreen = () => {
                       label="First Name"
                       value={registerForm.firstName}
                       onChangeText={(value) =>
-                        setRegisterForm((prev) => ({
-                          ...prev,
-                          firstName: value,
-                        }))
+                        setRegisterForm((prev) => ({ ...prev, firstName: value }))
                       }
                       icon="person-outline"
                       placeholder="John"
@@ -179,10 +177,7 @@ export const AuthScreen = () => {
                       label="Last Name"
                       value={registerForm.lastName}
                       onChangeText={(value) =>
-                        setRegisterForm((prev) => ({
-                          ...prev,
-                          lastName: value,
-                        }))
+                        setRegisterForm((prev) => ({ ...prev, lastName: value }))
                       }
                       icon="person-outline"
                       placeholder="Doe"
@@ -206,15 +201,7 @@ export const AuthScreen = () => {
                 />
 
                 <View>
-                  <View style={styles.passwordLabelRow}>
-                    <Text style={styles.label}>Password</Text>
-
-                    {isLogin && (
-                      <Pressable>
-                        <Text style={styles.forgotText}>Forgot?</Text>
-                      </Pressable>
-                    )}
-                  </View>
+                  <Text style={styles.label}>Password</Text>
 
                   <View style={styles.inputWrapper}>
                     <Ionicons
@@ -229,10 +216,7 @@ export const AuthScreen = () => {
                       onChangeText={(value) =>
                         isLogin
                           ? setLoginForm((prev) => ({ ...prev, password: value }))
-                          : setRegisterForm((prev) => ({
-                              ...prev,
-                              password: value,
-                            }))
+                          : setRegisterForm((prev) => ({ ...prev, password: value }))
                       }
                       placeholder="••••••••"
                       placeholderTextColor={colors.outline}
@@ -269,7 +253,6 @@ export const AuthScreen = () => {
                       <Text style={styles.primaryButtonText}>
                         {isLogin ? 'Sign In' : 'Submit Request'}
                       </Text>
-
                       <Ionicons
                         name="arrow-forward"
                         size={22}
@@ -285,37 +268,17 @@ export const AuthScreen = () => {
                   {isLogin ? "Don't have an account?" : 'Already have an account?'}
                 </Text>
 
-                <Pressable
-                  onPress={() => setMode(isLogin ? 'register' : 'login')}
-                >
+                <Pressable onPress={() => setMode(isLogin ? 'register' : 'login')}>
                   <Text style={styles.footerLink}>
                     {isLogin ? ' Register your team' : ' Sign In'}
                   </Text>
                 </Pressable>
               </View>
             </View>
-
-            <SecureConnectionCard />
           </View>
-
-          <Footer />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
-  );
-};
-
-const Header = () => {
-  return (
-    <View style={styles.header}>
-      <MaterialCommunityIcons
-        name="wallet-outline"
-        size={34}
-        color={colors.primary}
-      />
-
-      <Text style={styles.brandText}>CapitalFlow</Text>
-    </View>
   );
 };
 
@@ -366,46 +329,6 @@ const Input = ({
   );
 };
 
-const SecureConnectionCard = () => {
-  return (
-    <View style={styles.secureCard}>
-      <View style={styles.secureIconBox}>
-        <Ionicons
-          name="shield-checkmark-outline"
-          size={30}
-          color={colors.primary}
-        />
-      </View>
-
-      <View style={styles.secureTextArea}>
-        <Text style={styles.secureTitle}>Secure Connection</Text>
-        <Text style={styles.secureSubtitle}>AES-256 Bit Encryption Active</Text>
-      </View>
-    </View>
-  );
-};
-
-const Footer = () => {
-  return (
-    <View style={styles.footer}>
-      <View style={styles.footerLinks}>
-        <View style={styles.footerLinkItem}>
-          <Ionicons name="globe-outline" size={17} color={colors.onSurfaceVariant} />
-          <Text style={styles.footerSmallText}>English (US)</Text>
-        </View>
-
-        <View style={styles.footerDot} />
-
-        <Text style={styles.footerSmallText}>Security Policy</Text>
-      </View>
-
-      <Text style={styles.copyright}>
-        © 2024 CapitalFlow Institutional Services LLC. All rights reserved.
-      </Text>
-    </View>
-  );
-};
-
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -437,29 +360,9 @@ const styles = StyleSheet.create({
   heroBackground: {
     flex: 1,
     paddingHorizontal: 16,
-    paddingTop: 260,
+    paddingTop: 80,
     paddingBottom: 40,
     backgroundColor: colors.surfaceContainerLow,
-  },
-  blurCircleOne: {
-    position: 'absolute',
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    backgroundColor: colors.primaryFixedDim ?? '#B4C5FF',
-    opacity: 0.18,
-    top: -80,
-    left: -90,
-  },
-  blurCircleTwo: {
-    position: 'absolute',
-    width: 320,
-    height: 320,
-    borderRadius: 160,
-    backgroundColor: '#BCC7DE',
-    opacity: 0.16,
-    bottom: -90,
-    right: -100,
   },
   card: {
     width: '100%',
@@ -508,16 +411,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     fontWeight: '700',
     color: colors.onSurfaceVariant,
-  },
-  passwordLabelRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  forgotText: {
-    color: colors.primary,
-    fontWeight: '700',
-    fontSize: 14,
+    marginBottom: 8,
   },
   inputWrapper: {
     minHeight: 64,
@@ -549,11 +443,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     flexDirection: 'row',
     gap: 12,
-    shadowColor: colors.primaryContainer,
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.25,
-    shadowRadius: 14,
-    elevation: 4,
   },
   buttonPressed: {
     transform: [{ scale: 0.98 }],
@@ -585,81 +474,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.primary,
     fontWeight: '800',
-  },
-  secureCard: {
-    marginTop: 40,
-    marginHorizontal: 14,
-    minHeight: 96,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.75)',
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.7)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 18,
-    gap: 18,
-    shadowColor: '#1E293B',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.08,
-    shadowRadius: 20,
-    elevation: 3,
-  },
-  secureIconBox: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: 'rgba(0, 74, 198, 0.1)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  secureTextArea: {
-    flex: 1,
-  },
-  secureTitle: {
-    fontSize: 16,
-    lineHeight: 22,
-    fontWeight: '800',
-    color: colors.onSurface,
-  },
-  secureSubtitle: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: colors.onSurfaceVariant,
-  },
-  footer: {
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 28,
-    alignItems: 'center',
-    gap: 14,
-    backgroundColor: colors.surfaceContainerLow,
-  },
-  footerLinks: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 18,
-  },
-  footerLinkItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  footerDot: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: colors.outlineVariant,
-  },
-  footerSmallText: {
-    fontSize: 14,
-    color: colors.onSurfaceVariant,
-    fontWeight: '600',
-  },
-  copyright: {
-    textAlign: 'center',
-    fontSize: 13,
-    lineHeight: 19,
-    color: colors.outline,
-    fontWeight: '600',
   },
 });

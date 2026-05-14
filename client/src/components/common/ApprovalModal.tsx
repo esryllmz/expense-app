@@ -36,7 +36,7 @@ export const ApprovalModal = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm animate-in fade-in duration-300">
-      <div className="bg-white w-full max-w-lg rounded-[2rem] shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-300">
+      <div className="bg-white w-full max-w-lg rounded-4xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-300">
         <div className="p-7 border-b border-slate-100 flex justify-between items-center">
           <div>
             <h2 className="text-xl font-black text-slate-900 tracking-tight">

@@ -1,6 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { sessionStorageService } from '../../../core/auth/sessionStorage';
-import type { User } from '../types/authTypes';
+import type { User } from '../types/authtypes';
 
 interface AuthState {
   user: User | null;

@@ -1,5 +1,12 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
-import { tokenStorage } from '../../../core/storage/tokenStorage';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+import { tokenStorage } from '../../../core/auth/tokenStorage';
+import { authService } from '../services/authService';
 import type { User } from '../types/authTypes';
 
 interface AuthContextValue {
@@ -8,6 +15,7 @@ interface AuthContextValue {
   isAuthenticated: boolean;
   signIn: (user: User) => Promise<void>;
   signOut: () => Promise<void>;
+  refreshCurrentUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -16,45 +24,76 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const loadStoredSession = async () => {
+  const bootstrapSession = async () => {
     try {
-      const storedUser = await tokenStorage.getUser();
       const accessToken = await tokenStorage.getAccessToken();
 
-      if (storedUser && accessToken) {
-        setUser(storedUser);
+      if (!accessToken) {
+        await tokenStorage.clear();
+        setUser(null);
+        return;
       }
+
+      const response = await authService.me();
+
+      if (!response.success || !response.data) {
+        await tokenStorage.clear();
+        setUser(null);
+        return;
+      }
+
+      await tokenStorage.setUser(response.data);
+      setUser(response.data);
+    } catch {
+      await tokenStorage.clear();
+      setUser(null);
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    loadStoredSession();
+    bootstrapSession();
   }, []);
 
   const signIn = async (nextUser: User) => {
+    await tokenStorage.setUser(nextUser);
     setUser(nextUser);
   };
 
   const signOut = async () => {
-    await tokenStorage.clear();
-    setUser(null);
+    try {
+      await authService.logout();
+    } catch {
+      // Backend logout hata verse bile local session kapatılır.
+    } finally {
+      await tokenStorage.clear();
+      setUser(null);
+    }
   };
 
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        isLoading,
-        isAuthenticated: !!user,
-        signIn,
-        signOut,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+  const refreshCurrentUser = async () => {
+    const response = await authService.me();
+
+    if (response.success && response.data) {
+      await tokenStorage.setUser(response.data);
+      setUser(response.data);
+    }
+  };
+
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      user,
+      isLoading,
+      isAuthenticated: !!user,
+      signIn,
+      signOut,
+      refreshCurrentUser,
+    }),
+    [user, isLoading]
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
 export const useAuthContext = () => {

@@ -2,13 +2,13 @@ import { useMutation } from '@tanstack/react-query';
 import { useDispatch } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
 import type { ApiResponse, NoData } from '../../../core/types/ApiResponse';
-import { authService } from '../services/authService';
+import { authService } from '../services/authservice';
 import { logout as logoutAction, setCredentials } from '../store/authSlice';
 import type {
   AuthResponse,
   LoginRequest,
   RegisterRequest,
-} from '../types/authTypes';
+} from '../types/authtypes';
 
 export const useAuth = () => {
   const dispatch = useDispatch();

@@ -1,4 +1,4 @@
-import type { UserRole } from '../../features/auth/types/authTypes';
+import type { UserRole } from '../../features/auth/types/authtypes';
 import type { RequestStatus } from '../../features/expense/types/expenseTypes';
 
 export const formatDate = (value?: string | null) => {

@@ -113,7 +113,7 @@ export const SettingsPage = () => {
 
   return (
     <div className="max-w-3xl mx-auto space-y-6">
-      <section className="bg-white rounded-[2rem] border border-outline-variant/20 shadow-sm overflow-hidden">
+      <section className="bg-white rounded-4xl border border-outline-variant/20 shadow-sm overflow-hidden">
         <div className="px-8 py-5 border-b border-surface-container flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
             <Save size={18} />
@@ -179,7 +179,7 @@ export const SettingsPage = () => {
         </form>
       </section>
 
-      <section className="bg-white rounded-[2rem] border border-outline-variant/20 shadow-sm overflow-hidden">
+      <section className="bg-white rounded-4xl border border-outline-variant/20 shadow-sm overflow-hidden">
         <div className="px-8 py-5 border-b border-surface-container flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
             <Lock size={18} />

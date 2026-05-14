@@ -4,12 +4,12 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { sessionStorageService } from '../core/auth/sessionStorage';
 import type { RootState } from '../core/store/store';
-import { authService } from '../features/auth/services/authService';
+import { authService } from '../features/auth/services/authservice';
 import {
   logout as logoutAction,
   setUser,
 } from '../features/auth/store/authSlice';
-import type { UserRole } from '../features/auth/types/authTypes';
+import type { UserRole } from '../features/auth/types/authtypes';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;

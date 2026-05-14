@@ -5,7 +5,7 @@ import type {
   LoginRequest,
   RegisterRequest,
   User,
-} from '../types/authTypes';
+} from '../types/authtypes';
 
 export const authService = {
   login: (credentials: LoginRequest): Promise<ApiResponse<AuthResponse>> => {

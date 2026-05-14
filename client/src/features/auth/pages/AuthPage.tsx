@@ -64,8 +64,8 @@ const AuthPage = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-surface to-surface-container-high p-4">
-      <div className="w-full max-w-[440px] bg-surface-container-lowest rounded-xl shadow-[0px_4px_20px_rgba(30,41,59,0.05)] border border-outline-variant/20 p-10 flex flex-col">
+    <div className="min-h-screen flex items-center justify-center bg-linear-to-br from-surface to-surface-container-high p-4">
+      <div className="w-full max-w-110 bg-surface-container-lowest rounded-xl shadow-[0px_4px_20px_rgba(30,41,59,0.05)] border border-outline-variant/20 p-10 flex flex-col">
         <div className="flex flex-col items-center mb-8">
           <div className="w-12 h-12 rounded-lg bg-primary-container flex items-center justify-center mb-4 shadow-sm">
             <Building2 className="text-on-primary-container" size={24} />

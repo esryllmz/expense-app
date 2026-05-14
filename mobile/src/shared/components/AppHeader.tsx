@@ -1,18 +1,26 @@
 import React from 'react';
-import { StyleSheet, Text, View, Pressable, Alert } from 'react-native';
+import {
+  Alert,
+  Platform,
+  Pressable,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors } from '../../core/theme/colors';
 
 interface AppHeaderProps {
   showNotification?: boolean;
-  showSearch?: boolean;
   showHelp?: boolean;
+  onNotificationPress?: () => void;
 }
 
 export const AppHeader = ({
   showNotification = true,
-  showSearch = false,
   showHelp = false,
+  onNotificationPress,
 }: AppHeaderProps) => {
   const handleHelpPress = () => {
     Alert.alert(
@@ -34,31 +42,31 @@ export const AppHeader = ({
       </View>
 
       <View style={styles.actions}>
-        {showSearch && (
-          <Pressable style={styles.iconButton}>
-            <Ionicons
-              name="search-outline"
-              size={26}
-              color={colors.onSurfaceVariant}
-            />
-          </Pressable>
-        )}
-
         {showNotification && (
-          <Pressable style={styles.iconButton}>
+          <Pressable
+            style={styles.iconButton}
+            onPress={onNotificationPress}
+            hitSlop={8}
+          >
             <Ionicons
               name="notifications-outline"
-              size={24}
+              size={23}
               color={colors.onSurfaceVariant}
             />
+
+            <View style={styles.notificationDot} />
           </Pressable>
         )}
 
         {showHelp && (
-          <Pressable style={styles.iconButton} onPress={handleHelpPress}>
+          <Pressable
+            style={styles.iconButton}
+            onPress={handleHelpPress}
+            hitSlop={8}
+          >
             <Ionicons
               name="help-circle-outline"
-              size={26}
+              size={24}
               color={colors.onSurfaceVariant}
             />
           </Pressable>
@@ -70,8 +78,11 @@ export const AppHeader = ({
 
 const styles = StyleSheet.create({
   header: {
-    height: 72,
-    paddingHorizontal: 22,
+    minHeight: 84,
+    paddingTop:
+      Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 12 : 18,
+    paddingBottom: 14,
+    paddingHorizontal: 20,
     backgroundColor: colors.surface,
     borderBottomWidth: 1,
     borderBottomColor: colors.outlineVariant,
@@ -83,11 +94,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    flexShrink: 1,
   },
   brandText: {
     color: colors.primary,
-    fontSize: 28,
-    lineHeight: 34,
+    fontSize: 26,
+    lineHeight: 32,
     fontWeight: '900',
   },
   actions: {
@@ -96,10 +108,19 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   iconButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  notificationDot: {
+    position: 'absolute',
+    top: 9,
+    right: 9,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.error,
   },
 });

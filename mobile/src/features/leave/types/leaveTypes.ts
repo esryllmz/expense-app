@@ -15,3 +15,7 @@ export interface CreateLeaveRequest {
   startDate: string;
   endDate: string;
 }
+
+export interface UpdateLeaveStatusRequest {
+  status: Exclude<RequestStatus, 'PENDING'>;
+}

@@ -7,22 +7,30 @@ import type {
 } from '../types/expenseTypes';
 
 export const expenseService = {
-  async getMyExpenses() {
+  async getMine() {
     const response = await apiClient.get<ApiResponse<Expense[]>>('/expenses/me');
     return response.data;
   },
 
-  async getSubordinateExpenses() {
-    const response = await apiClient.get<ApiResponse<Expense[]>>('/expenses/subordinates');
+  async getSubordinates() {
+    const response = await apiClient.get<ApiResponse<Expense[]>>(
+      '/expenses/subordinates'
+    );
     return response.data;
   },
 
-  async createExpense(request: CreateExpenseRequest) {
-    const response = await apiClient.post<ApiResponse<Expense>>('/expenses', request);
+  async create(request: CreateExpenseRequest) {
+    const response = await apiClient.post<ApiResponse<Expense>>(
+      '/expenses',
+      request
+    );
     return response.data;
   },
 
-  async updateStatus(expenseId: number, status: Exclude<RequestStatus, 'PENDING'>) {
+  async updateStatus(
+    expenseId: number,
+    status: Exclude<RequestStatus, 'PENDING'>
+  ) {
     const response = await apiClient.patch<ApiResponse<null>>(
       `/expenses/${expenseId}/status`,
       { status }

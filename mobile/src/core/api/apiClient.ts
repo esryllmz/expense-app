@@ -1,21 +1,14 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
-import { tokenStorage } from '../storage/tokenStorage';
+import { API_CONFIG } from './config';
+import { tokenStorage } from '../auth/tokenStorage';
 import type { ApiResponse } from '../types/ApiResponse';
 import type { AuthResponse } from '../../features/auth/types/authTypes';
 
-/**
- * Android Emulator için localhost yerine 10.0.2.2 kullanılır.
- * Çünkü emulator içindeki localhost, bilgisayarını değil emulator'ın kendisini gösterir.
- */
-const BASE_URL = 'http://10.0.2.2:8080/api/v1';
+type RetryableRequestConfig = InternalAxiosRequestConfig & {
+  _retry?: boolean;
+};
 
-export const apiClient = axios.create({
-  baseURL: BASE_URL,
-  timeout: 15000,
-  headers: {
-    'Content-Type': 'application/json',
-  },
-});
+let refreshPromise: Promise<AuthResponse | null> | null = null;
 
 const isAuthEndpoint = (url?: string) => {
   return (
@@ -23,6 +16,61 @@ const isAuthEndpoint = (url?: string) => {
     url?.includes('/auth/register') ||
     url?.includes('/auth/refresh-token')
   );
+};
+
+export const apiClient = axios.create({
+  baseURL: API_CONFIG.BASE_URL,
+  timeout: 15000,
+  headers: {
+    'Content-Type': 'application/json; charset=UTF-8',
+    Accept: 'application/json',
+  },
+});
+
+const refreshSession = async () => {
+  if (refreshPromise) {
+    return refreshPromise;
+  }
+
+  refreshPromise = (async () => {
+    const refreshToken = await tokenStorage.getRefreshToken();
+
+    if (!refreshToken) {
+      await tokenStorage.clear();
+      return null;
+    }
+
+    try {
+      const response = await axios.post<ApiResponse<AuthResponse>>(
+        `${API_CONFIG.BASE_URL}/auth/refresh-token`,
+        { refreshToken },
+        {
+          headers: {
+            'Content-Type': 'application/json; charset=UTF-8',
+            Accept: 'application/json',
+          },
+        }
+      );
+
+      const authData = response.data.data;
+
+      if (!response.data.success || !authData) {
+        await tokenStorage.clear();
+        return null;
+      }
+
+      await tokenStorage.setSession(authData);
+
+      return authData;
+    } catch {
+      await tokenStorage.clear();
+      return null;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
 };
 
 apiClient.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
@@ -40,55 +88,27 @@ apiClient.interceptors.request.use(async (config: InternalAxiosRequestConfig) =>
 apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError<ApiResponse<unknown>>) => {
-    const originalRequest = error.config as InternalAxiosRequestConfig & {
-      _retry?: boolean;
-    };
+    const originalRequest = error.config as RetryableRequestConfig | undefined;
 
     if (
-      error.response?.status === 401 &&
-      !originalRequest._retry &&
-      !isAuthEndpoint(originalRequest.url)
+      error.response?.status !== 401 ||
+      !originalRequest ||
+      originalRequest._retry ||
+      isAuthEndpoint(originalRequest.url)
     ) {
-      originalRequest._retry = true;
-
-      const refreshToken = await tokenStorage.getRefreshToken();
-
-      if (!refreshToken) {
-        await tokenStorage.clear();
-        return Promise.reject(error);
-      }
-
-      try {
-        const refreshResponse = await axios.post<ApiResponse<AuthResponse>>(
-          `${BASE_URL}/auth/refresh-token`,
-          { refreshToken },
-          {
-            headers: {
-              'Content-Type': 'application/json',
-            },
-          }
-        );
-
-        const authData = refreshResponse.data.data;
-
-        if (!refreshResponse.data.success || !authData) {
-          await tokenStorage.clear();
-          return Promise.reject(error);
-        }
-
-        await tokenStorage.setAccessToken(authData.accessToken);
-        await tokenStorage.setRefreshToken(authData.refreshToken);
-        await tokenStorage.setUser(authData.user);
-
-        originalRequest.headers.Authorization = `Bearer ${authData.accessToken}`;
-
-        return apiClient(originalRequest);
-      } catch (refreshError) {
-        await tokenStorage.clear();
-        return Promise.reject(refreshError);
-      }
+      return Promise.reject(error);
     }
 
-    return Promise.reject(error);
+    originalRequest._retry = true;
+
+    const authData = await refreshSession();
+
+    if (!authData) {
+      return Promise.reject(error);
+    }
+
+    originalRequest.headers.Authorization = `Bearer ${authData.accessToken}`;
+
+    return apiClient(originalRequest);
   }
 );

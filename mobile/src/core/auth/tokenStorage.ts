@@ -36,13 +36,28 @@ export const tokenStorage = {
     try {
       return JSON.parse(value) as User;
     } catch {
+      await SecureStore.deleteItemAsync(USER_KEY);
       return null;
     }
   },
 
+  async setSession(params: {
+    accessToken: string;
+    refreshToken: string;
+    user: User;
+  }) {
+    await Promise.all([
+      this.setAccessToken(params.accessToken),
+      this.setRefreshToken(params.refreshToken),
+      this.setUser(params.user),
+    ]);
+  },
+
   async clear() {
-    await SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY);
-    await SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY);
-    await SecureStore.deleteItemAsync(USER_KEY);
+    await Promise.all([
+      SecureStore.deleteItemAsync(ACCESS_TOKEN_KEY),
+      SecureStore.deleteItemAsync(REFRESH_TOKEN_KEY),
+      SecureStore.deleteItemAsync(USER_KEY),
+    ]);
   },
 };

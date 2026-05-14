@@ -1,4 +1,4 @@
-import type { User } from '../../features/auth/types/authTypes';
+import type { User } from '../../features/auth/types/authtypes';
 
 const ACCESS_TOKEN_KEY = 'accessToken';
 const REFRESH_TOKEN_KEY = 'refreshToken';

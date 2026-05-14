@@ -4,6 +4,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+
 import { AuthScreen } from '../../features/auth/screens/AuthScreen';
 import { DashboardScreen } from '../../features/dashboard/screens/DashboardScreen';
 import { LeaveScreen } from '../../features/leave/screens/LeaveScreen';
@@ -44,6 +45,7 @@ const MainTabs = () => {
         component={DashboardScreen}
         options={{
           title: 'Dashboard',
+          tabBarLabel: 'Ana Sayfa',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="grid-outline" size={size} color={color} />
           ),
@@ -54,7 +56,8 @@ const MainTabs = () => {
         name="Expenses"
         component={ExpenseScreen}
         options={{
-          title: 'Expenses',
+          title: 'Harcamalar',
+          tabBarLabel: 'Harcamalar',
           tabBarIcon: ({ color, size }) => (
             <MaterialCommunityIcons
               name="receipt-text-outline"
@@ -69,7 +72,8 @@ const MainTabs = () => {
         name="Leaves"
         component={LeaveScreen}
         options={{
-          title: 'Leaves',
+          title: 'İzinler',
+          tabBarLabel: 'İzinler',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="calendar-outline" size={size} color={color} />
           ),
@@ -80,7 +84,8 @@ const MainTabs = () => {
         name="Profile"
         component={ProfileScreen}
         options={{
-          title: 'Profile',
+          title: 'Profil',
+          tabBarLabel: 'Profil',
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="person-outline" size={size} color={color} />
           ),

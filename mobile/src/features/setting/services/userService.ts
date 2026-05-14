@@ -1,20 +1,17 @@
 import { apiClient } from '../../../core/api/apiClient';
 import type { ApiResponse } from '../../../core/types/ApiResponse';
+import type {
+  ChangePasswordRequest,
+  UpdateProfileRequest,
+} from '../types/userTypes';
 
-export interface UpdateProfileRequest {
-  firstName: string;
-  lastName: string;
-}
-
-export interface ChangePasswordRequest {
-  currentPassword: string;
-  newPassword: string;
-  confirmNewPassword: string;
-}
-
-export const profileService = {
+export const userService = {
   async updateProfile(request: UpdateProfileRequest) {
-    const response = await apiClient.put<ApiResponse<null>>('/users/profile', request);
+    const response = await apiClient.put<ApiResponse<null>>(
+      '/users/profile',
+      request
+    );
+
     return response.data;
   },
 

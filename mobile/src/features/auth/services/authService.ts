@@ -4,6 +4,7 @@ import type {
   AuthResponse,
   LoginRequest,
   RegisterRequest,
+  User,
 } from '../types/authTypes';
 
 export const authService = {
@@ -25,8 +26,23 @@ export const authService = {
     return response.data;
   },
 
+  async refreshToken(refreshToken: string) {
+    const response = await apiClient.post<ApiResponse<AuthResponse>>(
+      '/auth/refresh-token',
+      { refreshToken }
+    );
+
+    return response.data;
+  },
+
   async logout() {
     const response = await apiClient.post<ApiResponse<null>>('/auth/logout');
+
+    return response.data;
+  },
+
+  async me() {
+    const response = await apiClient.get<ApiResponse<User>>('/auth/me');
 
     return response.data;
   },
