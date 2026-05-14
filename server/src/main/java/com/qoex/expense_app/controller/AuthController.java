@@ -1,12 +1,14 @@
 package com.qoex.expense_app.controller;
 
 import com.qoex.expense_app.core.responses.ApiResponse;
-import com.qoex.expense_app.core.utils.SecurityUtils;
 import com.qoex.expense_app.dto.request.User.LoginRequestDto;
 import com.qoex.expense_app.dto.request.User.RefreshTokenRequestDto;
 import com.qoex.expense_app.dto.request.User.RegisterRequestDto;
 import com.qoex.expense_app.dto.response.TokenResponseDto;
+import com.qoex.expense_app.dto.response.UserResponseDto;
 import com.qoex.expense_app.service.IAuthenticationService;
+import com.qoex.expense_app.utils.SecurityUtils;
+
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -40,5 +42,12 @@ public class AuthController {
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<ApiResponse<Void>> logout() {
         return ResponseEntity.ok(authService.logout(SecurityUtils.getCurrentUserId()));
+    }
+
+    @GetMapping("/me")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<UserResponseDto>> me() {
+        Long currentUserId = SecurityUtils.getCurrentUserId();
+        return ResponseEntity.ok(authService.me(currentUserId));
     }
 }

@@ -1,23 +1,22 @@
-import { useState, useRef, useEffect } from 'react';
-import { useSelector, useDispatch } from 'react-redux';
-import { useLocation } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
 import { Bell, LogOut } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
+import { useSelector } from 'react-redux';
 import type { RootState } from '../../core/store/store';
-import { logout } from '../../features/auth/store/authSlice';
 import { getRoleLabel } from '../../core/utils/formatters';
+import { useAuth } from '../../features/auth/hooks/useAuth';
 
 export const Topbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  const dispatch = useDispatch();
   const location = useLocation();
+  const { logout } = useAuth();
 
   const user = useSelector((state: RootState) => state.auth.user);
 
-  const handleLogout = () => {
-    dispatch(logout());
-    window.location.href = '/';
+  const handleLogout = async () => {
+    await logout();
   };
 
   useEffect(() => {
@@ -73,7 +72,9 @@ export const Topbar = () => {
           >
             <div className="hidden sm:flex flex-col items-end">
               <span className="text-xs font-bold text-on-surface">
-                {user?.firstName ? `${user.firstName} ${user.lastName}` : 'Kullanıcı'}
+                {user?.firstName
+                  ? `${user.firstName} ${user.lastName}`
+                  : 'Kullanıcı'}
               </span>
 
               <span className="text-[10px] text-on-surface-variant font-medium">

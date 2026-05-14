@@ -1,10 +1,8 @@
 package com.qoex.expense_app.service.rules;
 
 import com.qoex.expense_app.core.enums.RequestStatus;
-import com.qoex.expense_app.core.enums.UserRole;
-import com.qoex.expense_app.core.exceptions.BusinessException;
-import com.qoex.expense_app.core.exceptions.ForbiddenException;
-import com.qoex.expense_app.core.exceptions.NotFoundException;
+import com.qoex.expense_app.exceptions.BusinessException;
+import com.qoex.expense_app.exceptions.NotFoundException;
 import com.qoex.expense_app.model.Leave;
 import com.qoex.expense_app.model.User;
 import com.qoex.expense_app.repository.LeaveRepository;
@@ -18,8 +16,9 @@ import java.time.LocalDate;
 @RequiredArgsConstructor
 public class LeaveBusinessRules {
 
-    private final LeaveRepository leaveRequestRepository;
+    private final LeaveRepository leaveRepository;
     private final UserRepository userRepository;
+    private final RequestApprovalRules approvalRules;
 
     public void validateDates(LocalDate start, LocalDate end) {
         if (end.isBefore(start)) {
@@ -31,41 +30,23 @@ public class LeaveBusinessRules {
         }
     }
 
-    public void validateManagerAction(Leave leaveRequest, Long managerId) {
-        User currentUser = userRepository.findById(managerId)
-                .orElseThrow(() -> new NotFoundException("Kullanıcı bulunamadı."));
-
-        // GM tüm şirket personelinin izinlerini yönetebilir ama kendi talebini bu
-        // endpointten yönetemez.
-        if (currentUser.getRole() == UserRole.ROLE_GM) {
-            if (leaveRequest.getEmployee().getId().equals(managerId)) {
-                throw new ForbiddenException("Kendi talebinizi yönetici onayı ile güncelleyemezsiniz.");
-            }
-
-            return;
-        }
-
-        if (leaveRequest.getEmployee().getManager() == null ||
-                !leaveRequest.getEmployee().getManager().getId().equals(managerId)) {
-
-            throw new ForbiddenException("Sadece kendi personelinizin izinlerini yönetebilirsiniz.");
-        }
-    }
-
     public Leave getIfExist(Long id) {
-        return leaveRequestRepository.findById(id)
+        return leaveRepository.findById(id)
                 .orElseThrow(() -> new NotFoundException("İzin talebi bulunamadı."));
     }
 
-    public void leaveMustBePending(Leave leaveRequest) {
-        if (leaveRequest.getStatus() != RequestStatus.PENDING) {
-            throw new BusinessException("Sadece beklemedeki izin talepleri üzerinde işlem yapılabilir.");
-        }
+    public void validateManagerAction(Leave leave, Long managerId) {
+        User currentUser = userRepository.findById(managerId)
+                .orElseThrow(() -> new NotFoundException("Kullanıcı bulunamadı."));
+
+        approvalRules.managerMustBeAllowedToManageEmployee(currentUser, leave.getEmployee());
+    }
+
+    public void leaveMustBePending(Leave leave) {
+        approvalRules.requestMustBePending(leave.getStatus());
     }
 
     public void statusMustBeFinalDecision(RequestStatus status) {
-        if (status == RequestStatus.PENDING) {
-            throw new BusinessException("Talep tekrar bekleme durumuna alınamaz.");
-        }
+        approvalRules.statusMustBeFinalDecision(status);
     }
 }

@@ -1,25 +1,36 @@
 import { apiClient } from '../../../core/api/apiClient';
-import type { AuthResponse, LoginRequest, RegisterRequest } from '../types/authtypes';
 import type { ApiResponse, NoData } from '../../../core/types/ApiResponse';
+import type {
+  AuthResponse,
+  LoginRequest,
+  RegisterRequest,
+  User,
+} from '../types/authTypes';
 
 export const authService = {
-  login: async (credentials: LoginRequest): Promise<ApiResponse<AuthResponse>> => {
-    return await apiClient<AuthResponse>('/auth/login', {
+  login: (credentials: LoginRequest): Promise<ApiResponse<AuthResponse>> => {
+    return apiClient<AuthResponse>('/auth/login', {
       method: 'POST',
       body: JSON.stringify(credentials),
     });
   },
 
-  register: async (data: RegisterRequest): Promise<ApiResponse<NoData>> => {
-    return await apiClient<NoData>('/auth/register', {
+  register: (data: RegisterRequest): Promise<ApiResponse<NoData>> => {
+    return apiClient<NoData>('/auth/register', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   },
 
-  logout: async (): Promise<ApiResponse<NoData>> => {
-    return await apiClient<NoData>('/auth/logout', {
+  logout: (): Promise<ApiResponse<NoData>> => {
+    return apiClient<NoData>('/auth/logout', {
       method: 'POST',
+    });
+  },
+
+  me: (): Promise<ApiResponse<User>> => {
+    return apiClient<User>('/auth/me', {
+      method: 'GET',
     });
   },
 };

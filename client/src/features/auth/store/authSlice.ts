@@ -1,5 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import type { User } from '../types/authtypes';
+import { sessionStorageService } from '../../../core/auth/sessionStorage';
+import type { User } from '../types/authTypes';
 
 interface AuthState {
   user: User | null;
@@ -8,19 +9,13 @@ interface AuthState {
   loading: boolean;
 }
 
-const getStoredUser = (): User | null => {
-  try {
-    const value = localStorage.getItem('user');
-    return value ? JSON.parse(value) : null;
-  } catch {
-    return null;
-  }
-};
+const storedUser = sessionStorageService.getUser();
+const storedToken = sessionStorageService.getAccessToken();
 
 const initialState: AuthState = {
-  user: getStoredUser(),
-  token: localStorage.getItem('accessToken'),
-  isAuthenticated: !!localStorage.getItem('accessToken'),
+  user: storedUser,
+  token: storedToken,
+  isAuthenticated: Boolean(storedToken),
   loading: false,
 };
 
@@ -28,30 +23,53 @@ const authSlice = createSlice({
   name: 'auth',
   initialState,
   reducers: {
+    setAuthLoading: (state, action: PayloadAction<boolean>) => {
+      state.loading = action.payload;
+    },
+
     setCredentials: (
       state,
-      action: PayloadAction<{ user: User; accessToken: string }>
+      action: PayloadAction<{
+        user: User;
+        accessToken: string;
+        refreshToken?: string;
+      }>
     ) => {
       state.user = action.payload.user;
       state.token = action.payload.accessToken;
       state.isAuthenticated = true;
+      state.loading = false;
 
-      localStorage.setItem('user', JSON.stringify(action.payload.user));
-      localStorage.setItem('accessToken', action.payload.accessToken);
+      if (action.payload.refreshToken) {
+        sessionStorageService.setSession({
+          user: action.payload.user,
+          accessToken: action.payload.accessToken,
+          refreshToken: action.payload.refreshToken,
+        });
+      } else {
+        sessionStorageService.setAccessToken(action.payload.accessToken);
+        sessionStorageService.setUser(action.payload.user);
+      }
+    },
+
+    setUser: (state, action: PayloadAction<User>) => {
+      state.user = action.payload;
+      state.isAuthenticated = true;
+      sessionStorageService.setUser(action.payload);
     },
 
     logout: (state) => {
       state.user = null;
       state.token = null;
       state.isAuthenticated = false;
+      state.loading = false;
 
-      localStorage.removeItem('user');
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
+      sessionStorageService.clearSession();
     },
   },
 });
 
-export const { setCredentials, logout } = authSlice.actions;
+export const { setAuthLoading, setCredentials, setUser, logout } =
+  authSlice.actions;
 
 export default authSlice.reducer;

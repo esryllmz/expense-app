@@ -1,11 +1,11 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { MainLayout } from '../layouts/MainLayout';
-import ProtectedRoute from './ProtectedRoute';
-import DashboardPage from '../features/dashboard/pages/DashboardPage';
+import { Navigate, Route, Routes } from 'react-router-dom';
 import AuthPage from '../features/auth/pages/AuthPage';
+import DashboardPage from '../features/dashboard/pages/DashboardPage';
 import { ExpensesPage } from '../features/expense/pages/ExpensePage';
 import { LeavePage } from '../features/leave/pages/LeavePage';
 import { SettingsPage } from '../features/setting/pages/SettingsPage';
+import { MainLayout } from '../layouts/MainLayout';
+import ProtectedRoute from './ProtectedRoute';
 
 export const AppRouter = () => {
   return (
@@ -26,15 +26,6 @@ export const AppRouter = () => {
         <Route path="/leaves" element={<LeavePage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>
-
-      <Route
-        path="/admin"
-        element={
-          <ProtectedRoute requiredRole="ROLE_GM">
-            <MainLayout />
-          </ProtectedRoute>
-        }
-      />
 
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

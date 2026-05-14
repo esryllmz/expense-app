@@ -3,17 +3,19 @@ package com.qoex.expense_app.service.impl;
 import com.qoex.expense_app.core.responses.ApiResponse;
 import com.qoex.expense_app.core.enums.RequestStatus;
 import com.qoex.expense_app.core.enums.UserRole;
-import com.qoex.expense_app.core.events.LeaveCreatedEvent;
-import com.qoex.expense_app.core.exceptions.NotFoundException;
+import com.qoex.expense_app.exceptions.NotFoundException;
 import com.qoex.expense_app.dto.request.Leave.CreateLeaveRequest;
 import com.qoex.expense_app.dto.request.Leave.UpdateLeaveStatusRequest;
 import com.qoex.expense_app.dto.response.LeaveResponseDto;
+import com.qoex.expense_app.events.LeaveCreatedEvent;
 import com.qoex.expense_app.model.Leave;
 import com.qoex.expense_app.model.User;
 import com.qoex.expense_app.repository.LeaveRepository;
 import com.qoex.expense_app.repository.UserRepository;
 import com.qoex.expense_app.service.ILeaveService;
 import com.qoex.expense_app.service.rules.LeaveBusinessRules;
+import com.qoex.expense_app.service.rules.RequestApprovalRules;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -29,6 +31,7 @@ public class LeaveServiceImpl implements ILeaveService {
 
     private final LeaveRepository leaveRequestRepository;
     private final LeaveBusinessRules businessRules;
+    private final RequestApprovalRules approvalRules;
     private final UserRepository userRepository;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -41,6 +44,7 @@ public class LeaveServiceImpl implements ILeaveService {
         User employee = userRepository.findById(employeeId)
                 .orElseThrow(() -> new NotFoundException("Kullanıcı bulunamadı."));
 
+        approvalRules.employeeMustHaveManager(employee);
         Leave leave = new Leave();
         leave.setDescription(request.description());
         leave.setStartDate(request.startDate());

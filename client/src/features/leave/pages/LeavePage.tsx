@@ -1,27 +1,51 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { CalendarDays, MoreHorizontal, Plus } from 'lucide-react';
 import { useSelector } from 'react-redux';
+import { ApprovalModal } from '../../../components/common/ApprovalModal';
+import { DataState } from '../../../components/common/DataState';
+import { StatusBadge } from '../../../components/common/StatusBadge';
+import { ViewTabs } from '../../../components/common/ViewTabs';
 import type { RootState } from '../../../core/store/store';
-import { apiClient } from '../../../core/api/apiClient';
-import { calculateLeaveDays, formatDate, getStatusLabel } from '../../../core/utils/formatters';
+import { calculateLeaveDays, formatDate } from '../../../core/utils/formatters';
+import {
+  canApproveRequest,
+  canCreateOwnRequest,
+  canManageRequests,
+  isGM,
+  isTeamLead,
+} from '../../../core/utils/permissions';
+import type { RequestStatus } from '../../expense/types/expenseTypes';
 import { LeaveModal } from '../components/LeaveModal';
-import { ApprovalModal } from '../../../components/ApprovalModal';
+import { leaveService } from '../services/leaveService';
+import type { Leave } from '../types/leaveTypes';
 
-interface Leave {
-  id: number;
-  description: string;
-  startDate: string;
-  endDate: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
-  employeeFullName: string;
-  employeeId: number;
-}
+type LeaveView = 'mine' | 'subordinates';
 
 export const LeavePage = () => {
   const user = useSelector((state: RootState) => state.auth.user);
 
-  const isManager =
-    user?.role === 'ROLE_GM' || user?.role === 'ROLE_TEAM_LEADER';
+ const manageable = canManageRequests(user?.role);
+  const gm = isGM(user?.role);
+  const teamLead = isTeamLead(user?.role);
+  const canCreate = canCreateOwnRequest(user?.role);
+
+  const [view, setView] = useState<LeaveView>('mine');
+
+  useEffect(() => {
+    if (!user?.role) return;
+
+    if (gm) {
+      setView('subordinates');
+      return;
+    }
+
+    if (teamLead) {
+      setView((currentView) => currentView || 'subordinates');
+      return;
+    }
+
+    setView('mine');
+  }, [user?.role, gm, teamLead]);
 
   const [leaves, setLeaves] = useState<Leave[]>([]);
   const [loading, setLoading] = useState(false);
@@ -30,12 +54,16 @@ export const LeavePage = () => {
   const [selectedLeave, setSelectedLeave] = useState<Leave | null>(null);
   const [approvalLoading, setApprovalLoading] = useState(false);
 
-  const loadLeaves = async () => {
+ const loadLeaves = useCallback(async () => {
+    if (!user?.role) return;
+
     setLoading(true);
 
     try {
-      const endpoint = isManager ? '/leaves/subordinates' : '/leaves/me';
-      const response = await apiClient<Leave[]>(endpoint);
+      const response =
+        gm || view === 'subordinates'
+          ? await leaveService.getSubordinates()
+          : await leaveService.getMine();
 
       setLeaves(response.data || []);
     } catch {
@@ -43,25 +71,29 @@ export const LeavePage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [view, user?.role, gm]);
 
   useEffect(() => {
     loadLeaves();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.role]);
+  }, [loadLeaves]);
+
+  const selectedCanAct = useMemo(() => {
+    return canApproveRequest({
+      role: user?.role,
+      currentUserId: user?.id,
+      employeeId: selectedLeave?.employeeId,
+      status: selectedLeave?.status,
+    });
+  }, [selectedLeave, user?.id, user?.role]);
 
   const updateLeaveStatus = async (
     leaveId: number,
-    status: 'APPROVED' | 'REJECTED'
+    status: Exclude<RequestStatus, 'PENDING'>
   ) => {
     setApprovalLoading(true);
 
     try {
-      await apiClient<null>(`/leaves/${leaveId}/status`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status }),
-      });
-
+      await leaveService.updateStatus(leaveId, { status });
       setSelectedLeave(null);
       await loadLeaves();
     } catch {
@@ -71,27 +103,49 @@ export const LeavePage = () => {
     }
   };
 
+  const tabs = useMemo(() => {
+    if (!teamLead) return [];
+
+    return [
+      { label: 'Onay Talepleri', value: 'subordinates' as const },
+      { label: 'Benim Taleplerim', value: 'mine' as const },
+    ];
+  }, [teamLead]);
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-2xl font-black text-on-surface">İzinler</h1>
+          <h1 className="text-2xl font-black text-on-surface">İzin Yönetimi</h1>
+
           <p className="text-sm text-on-surface-variant">
-            {isManager
-              ? 'Bağlı personelinizin izin taleplerini görüntüleyebilirsiniz.'
+            {view === 'subordinates'
+              ? user?.role === 'ROLE_GM'
+                ? 'Organizasyon içindeki izin taleplerini görüntüleyebilir ve yönetebilirsiniz.'
+                : 'Bağlı personelinizin izin taleplerini görüntüleyebilir ve yönetebilirsiniz.'
               : 'Kendi izin taleplerinizi görüntüleyebilir ve yeni talep oluşturabilirsiniz.'}
           </p>
         </div>
 
-        {!isManager && (
-          <button
-            onClick={() => setIsCreateOpen(true)}
-            className="px-5 py-3 rounded-2xl bg-primary text-white font-black flex items-center gap-2 hover:bg-surface-tint"
-          >
-            <Plus size={18} />
-            Yeni İzin
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-3">
+          {teamLead && (
+            <ViewTabs<LeaveView>
+              value={view}
+              items={tabs}
+              onChange={setView}
+            />
+          )}
+
+          {canCreate && view === 'mine' && !gm && (
+            <button
+              onClick={() => setIsCreateOpen(true)}
+              className="px-5 py-3 rounded-2xl bg-primary text-white font-black flex items-center gap-2 hover:bg-surface-tint"
+            >
+              <Plus size={18} />
+              Yeni İzin
+            </button>
+          )}
+        </div>
       </div>
 
       <section className="bg-white rounded-[2rem] border border-outline-variant/20 shadow-sm overflow-hidden">
@@ -121,25 +175,19 @@ export const LeavePage = () => {
             </thead>
 
             <tbody>
-              {loading && (
-                <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-on-surface-variant">
-                    Yükleniyor...
-                  </td>
-                </tr>
-              )}
-
-              {!loading && leaves.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-on-surface-variant">
-                    İzin talebi bulunamadı.
-                  </td>
-                </tr>
-              )}
+              <DataState
+                loading={loading}
+                empty={!loading && leaves.length === 0}
+                emptyText="İzin talebi bulunamadı."
+                colSpan={6}
+              />
 
               {!loading &&
                 leaves.map((leave) => (
-                  <tr key={leave.id} className="border-t border-outline-variant/10">
+                  <tr
+                    key={leave.id}
+                    className="border-t border-outline-variant/10"
+                  >
                     <td className="px-6 py-4">
                       <div className="flex items-start gap-3">
                         <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
@@ -147,9 +195,11 @@ export const LeavePage = () => {
                         </div>
 
                         <div>
-                          <p className="font-bold text-on-surface">{leave.description}</p>
+                          <p className="font-bold text-on-surface">
+                            {leave.description}
+                          </p>
 
-                          {isManager && (
+                          {view === 'subordinates' && (
                             <p className="text-xs text-on-surface-variant mt-1">
                               Talep sahibi: {leave.employeeFullName}
                             </p>
@@ -195,7 +245,7 @@ export const LeavePage = () => {
         isOpen={!!selectedLeave}
         type="LEAVE"
         item={selectedLeave}
-        canAct={isManager}
+        canAct={selectedCanAct}
         loading={approvalLoading}
         onClose={() => setSelectedLeave(null)}
         onApprove={() =>
@@ -206,20 +256,5 @@ export const LeavePage = () => {
         }
       />
     </div>
-  );
-};
-
-const StatusBadge = ({ status }: { status: string }) => {
-  const className =
-    status === 'APPROVED'
-      ? 'bg-success/10 text-success border-success/20'
-      : status === 'REJECTED'
-        ? 'bg-error/10 text-error border-error/20'
-        : 'bg-warning/10 text-warning border-warning/20';
-
-  return (
-    <span className={`inline-flex px-3 py-1 rounded-full border text-xs font-black ${className}`}>
-      {getStatusLabel(status)}
-    </span>
   );
 };

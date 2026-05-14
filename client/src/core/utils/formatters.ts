@@ -1,3 +1,6 @@
+import type { UserRole } from '../../features/auth/types/authTypes';
+import type { RequestStatus } from '../../features/expense/types/expenseTypes';
+
 export const formatDate = (value?: string | null) => {
   if (!value) return '-';
 
@@ -23,7 +26,10 @@ export const formatCurrency = (value?: number | string | null) => {
   }).format(numberValue);
 };
 
-export const calculateLeaveDays = (startDate?: string | null, endDate?: string | null) => {
+export const calculateLeaveDays = (
+  startDate?: string | null,
+  endDate?: string | null
+) => {
   if (!startDate || !endDate) return 0;
 
   const start = new Date(startDate);
@@ -38,7 +44,13 @@ export const calculateLeaveDays = (startDate?: string | null, endDate?: string |
   return Math.floor(diff / (1000 * 60 * 60 * 24)) + 1;
 };
 
-export const getStatusLabel = (status?: string) => {
+export const getTodayInputValue = () => {
+  const date = new Date();
+  const timezoneOffset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - timezoneOffset).toISOString().split('T')[0];
+};
+
+export const getStatusLabel = (status?: RequestStatus | string | null) => {
   switch (status) {
     case 'PENDING':
       return 'Beklemede';
@@ -51,7 +63,7 @@ export const getStatusLabel = (status?: string) => {
   }
 };
 
-export const getRoleLabel = (role?: string) => {
+export const getRoleLabel = (role?: UserRole | string | null) => {
   switch (role) {
     case 'ROLE_GM':
       return 'Genel Müdür';

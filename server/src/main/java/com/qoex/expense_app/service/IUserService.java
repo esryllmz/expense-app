@@ -11,7 +11,7 @@ public interface IUserService {
 
     ApiResponse<List<UserResponseDto>> getAll();
 
-    ApiResponse<UserResponseDto> getById(Long id);
+    public ApiResponse<UserResponseDto> getById(Long id, Long currentUserId, String role);
 
     ApiResponse<Void> update(UpdateUserRequest request, Long currentUserId);
 

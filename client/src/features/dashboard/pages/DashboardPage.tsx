@@ -1,36 +1,30 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Clock3,
+  FileText,
+  MoreHorizontal,
+  Receipt,
+  TurkishLira,
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { Clock3, FileText, MoreHorizontal, Receipt, TurkishLira } from 'lucide-react';
 import { useSelector } from 'react-redux';
+import { ApprovalModal } from '../../../components/common/ApprovalModal';
+import { DataState } from '../../../components/common/DataState';
+import { StatusBadge } from '../../../components/common/StatusBadge';
 import type { RootState } from '../../../core/store/store';
-import { apiClient } from '../../../core/api/apiClient';
-import { formatCurrency, formatDate, getStatusLabel } from '../../../core/utils/formatters';
-import { ApprovalModal } from '../../../components/ApprovalModal';
-
-interface Expense {
-  id: number;
-  description: string;
-  amount: number;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
-  employeeFullName: string;
-  employeeId: number;
-  createdDate: string;
-}
-
-interface Leave {
-  id: number;
-  description: string;
-  startDate: string;
-  endDate: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
-  employeeFullName: string;
-  employeeId: number;
-}
+import { formatCurrency, formatDate } from '../../../core/utils/formatters';
+import { canApproveRequest, canManageRequests } from '../../../core/utils/permissions';
+import { expenseService } from '../../expense/services/expenseService';
+import type { Expense, RequestStatus } from '../../expense/types/expenseTypes';
+import { leaveService } from '../../leave/services/leaveService';
+import type { Leave } from '../../leave/types/leaveTypes';
 
 const DashboardPage = () => {
   const navigate = useNavigate();
 
   const user = useSelector((state: RootState) => state.auth.user);
+
+  const manageable = canManageRequests(user?.role);
 
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [leaves, setLeaves] = useState<Leave[]>([]);
@@ -39,19 +33,13 @@ const DashboardPage = () => {
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
   const [approvalLoading, setApprovalLoading] = useState(false);
 
-  const isManager =
-    user?.role === 'ROLE_GM' || user?.role === 'ROLE_TEAM_LEADER';
-
-  const loadDashboard = async () => {
+  const loadDashboard = useCallback(async () => {
     setLoading(true);
 
     try {
-      const expenseEndpoint = isManager ? '/expenses/subordinates' : '/expenses/me';
-      const leaveEndpoint = isManager ? '/leaves/subordinates' : '/leaves/me';
-
       const [expenseResponse, leaveResponse] = await Promise.all([
-        apiClient<Expense[]>(expenseEndpoint),
-        apiClient<Leave[]>(leaveEndpoint),
+        manageable ? expenseService.getSubordinates() : expenseService.getMine(),
+        manageable ? leaveService.getSubordinates() : leaveService.getMine(),
       ]);
 
       setExpenses(expenseResponse.data || []);
@@ -61,37 +49,45 @@ const DashboardPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [manageable]);
 
   useEffect(() => {
     loadDashboard();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.role]);
+  }, [loadDashboard]);
 
   const totalExpenseAmount = useMemo(() => {
-    return expenses.reduce((sum, expense) => sum + Number(expense.amount || 0), 0);
+    return expenses.reduce(
+      (sum, expense) => sum + Number(expense.amount || 0),
+      0
+    );
   }, [expenses]);
 
   const pendingApprovalCount = useMemo(() => {
-    return [...expenses, ...leaves].filter((item) => item.status === 'PENDING').length;
+    return [...expenses, ...leaves].filter((item) => item.status === 'PENDING')
+      .length;
   }, [expenses, leaves]);
 
   const recentExpenses = useMemo(() => {
     return expenses.slice(0, 5);
   }, [expenses]);
 
+  const selectedCanAct = useMemo(() => {
+    return canApproveRequest({
+      role: user?.role,
+      currentUserId: user?.id,
+      employeeId: selectedExpense?.employeeId,
+      status: selectedExpense?.status,
+    });
+  }, [selectedExpense, user?.id, user?.role]);
+
   const updateExpenseStatus = async (
     expenseId: number,
-    status: 'APPROVED' | 'REJECTED'
+    status: Exclude<RequestStatus, 'PENDING'>
   ) => {
     setApprovalLoading(true);
 
     try {
-      await apiClient<null>(`/expenses/${expenseId}/status`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status }),
-      });
-
+      await expenseService.updateStatus(expenseId, { status });
       setSelectedExpense(null);
       await loadDashboard();
     } catch {
@@ -114,7 +110,11 @@ const DashboardPage = () => {
         <SummaryCard
           title="Bekleyen Onaylar"
           value={pendingApprovalCount.toString()}
-          description={isManager ? 'İşlem bekleyen bağlı personel talepleri' : 'Bekleyen talepleriniz'}
+          description={
+            manageable
+              ? 'İşlem bekleyen bağlı personel talepleri'
+              : 'Bekleyen talepleriniz'
+          }
           icon={<Clock3 size={22} />}
         />
 
@@ -163,33 +163,37 @@ const DashboardPage = () => {
             </thead>
 
             <tbody>
-              {loading && (
-                <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-on-surface-variant">
-                    Yükleniyor...
-                  </td>
-                </tr>
-              )}
-
-              {!loading && recentExpenses.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-on-surface-variant">
-                    Masraf talebi bulunamadı.
-                  </td>
-                </tr>
-              )}
+              <DataState
+                loading={loading}
+                empty={!loading && recentExpenses.length === 0}
+                emptyText="Masraf talebi bulunamadı."
+                colSpan={5}
+              />
 
               {!loading &&
                 recentExpenses.map((expense) => (
-                  <tr key={expense.id} className="border-t border-outline-variant/10">
+                  <tr
+                    key={expense.id}
+                    className="border-t border-outline-variant/10"
+                  >
                     <td className="px-6 py-4">
-                      <p className="font-bold text-on-surface">{expense.description}</p>
+                      <div className="flex items-start gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                          <Receipt size={18} />
+                        </div>
 
-                      {isManager && (
-                        <p className="text-xs text-on-surface-variant mt-1">
-                          Talep sahibi: {expense.employeeFullName}
-                        </p>
-                      )}
+                        <div>
+                          <p className="font-bold text-on-surface">
+                            {expense.description}
+                          </p>
+
+                          {manageable && (
+                            <p className="text-xs text-on-surface-variant mt-1">
+                              Talep sahibi: {expense.employeeFullName}
+                            </p>
+                          )}
+                        </div>
+                      </div>
                     </td>
 
                     <td className="px-6 py-4 font-bold">
@@ -224,7 +228,7 @@ const DashboardPage = () => {
         isOpen={!!selectedExpense}
         type="EXPENSE"
         item={selectedExpense}
-        canAct={isManager}
+        canAct={selectedCanAct}
         loading={approvalLoading}
         onClose={() => setSelectedExpense(null)}
         onApprove={() =>
@@ -261,21 +265,6 @@ const SummaryCard = ({
         {icon}
       </div>
     </div>
-  );
-};
-
-const StatusBadge = ({ status }: { status: string }) => {
-  const className =
-    status === 'APPROVED'
-      ? 'bg-success/10 text-success border-success/20'
-      : status === 'REJECTED'
-        ? 'bg-error/10 text-error border-error/20'
-        : 'bg-warning/10 text-warning border-warning/20';
-
-  return (
-    <span className={`inline-flex px-3 py-1 rounded-full border text-xs font-black ${className}`}>
-      {getStatusLabel(status)}
-    </span>
   );
 };
 

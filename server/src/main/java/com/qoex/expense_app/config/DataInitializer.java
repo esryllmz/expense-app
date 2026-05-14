@@ -2,13 +2,15 @@ package com.qoex.expense_app.config;
 
 import com.qoex.expense_app.core.enums.RequestStatus;
 import com.qoex.expense_app.core.enums.UserRole;
-import com.qoex.expense_app.core.security.HashingHelper;
 import com.qoex.expense_app.model.Expense;
 import com.qoex.expense_app.model.Leave;
 import com.qoex.expense_app.model.User;
 import com.qoex.expense_app.repository.ExpenseRepository;
 import com.qoex.expense_app.repository.LeaveRepository;
 import com.qoex.expense_app.repository.UserRepository;
+import com.qoex.expense_app.security.HashingHelper;
+import org.springframework.core.annotation.Order;
+
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
@@ -16,6 +18,7 @@ import org.springframework.stereotype.Component;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 
+@Order(1)
 @Component
 @RequiredArgsConstructor
 public class DataInitializer implements CommandLineRunner {

@@ -1,27 +1,50 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MoreHorizontal, Plus, Receipt } from 'lucide-react';
 import { useSelector } from 'react-redux';
+import { ApprovalModal } from '../../../components/common/ApprovalModal';
+import { DataState } from '../../../components/common/DataState';
+import { StatusBadge } from '../../../components/common/StatusBadge';
+import { ViewTabs } from '../../../components/common/ViewTabs';
 import type { RootState } from '../../../core/store/store';
-import { apiClient } from '../../../core/api/apiClient';
-import { formatCurrency, formatDate, getStatusLabel } from '../../../core/utils/formatters';
+import { formatCurrency, formatDate } from '../../../core/utils/formatters';
+import {
+  canApproveRequest,
+  canCreateOwnRequest,
+  canManageRequests,
+  isGM,
+  isTeamLead,
+} from '../../../core/utils/permissions';
 import { ExpenseModal } from '../components/ExpenseModal';
-import { ApprovalModal } from '../../../components/ApprovalModal';
+import { expenseService } from '../services/expenseService';
+import type { Expense, RequestStatus } from '../types/expenseTypes';
 
-interface Expense {
-  id: number;
-  description: string;
-  amount: number;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
-  employeeFullName: string;
-  employeeId: number;
-  createdDate: string;
-}
+type ExpenseView = 'mine' | 'subordinates';
 
 export const ExpensesPage = () => {
   const user = useSelector((state: RootState) => state.auth.user);
 
-  const isManager =
-    user?.role === 'ROLE_GM' || user?.role === 'ROLE_TEAM_LEADER';
+  const manageable = canManageRequests(user?.role);
+  const gm = isGM(user?.role);
+  const teamLead = isTeamLead(user?.role);
+  const canCreate = canCreateOwnRequest(user?.role);
+
+  const [view, setView] = useState<ExpenseView>('mine');
+
+  useEffect(() => {
+    if (!user?.role) return;
+
+    if (gm) {
+      setView('subordinates');
+      return;
+    }
+
+    if (teamLead) {
+      setView((currentView) => currentView || 'subordinates');
+      return;
+    }
+
+    setView('mine');
+  }, [user?.role, gm, teamLead]);
 
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(false);
@@ -30,12 +53,16 @@ export const ExpensesPage = () => {
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
   const [approvalLoading, setApprovalLoading] = useState(false);
 
-  const loadExpenses = async () => {
+  const loadExpenses = useCallback(async () => {
+    if (!user?.role) return;
+
     setLoading(true);
 
     try {
-      const endpoint = isManager ? '/expenses/subordinates' : '/expenses/me';
-      const response = await apiClient<Expense[]>(endpoint);
+      const response =
+        gm || view === 'subordinates'
+          ? await expenseService.getSubordinates()
+          : await expenseService.getMine();
 
       setExpenses(response.data || []);
     } catch {
@@ -43,25 +70,29 @@ export const ExpensesPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [view, user?.role, gm]);
 
   useEffect(() => {
     loadExpenses();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.role]);
+  }, [loadExpenses]);
+
+  const selectedCanAct = useMemo(() => {
+    return canApproveRequest({
+      role: user?.role,
+      currentUserId: user?.id,
+      employeeId: selectedExpense?.employeeId,
+      status: selectedExpense?.status,
+    });
+  }, [selectedExpense, user?.id, user?.role]);
 
   const updateExpenseStatus = async (
     expenseId: number,
-    status: 'APPROVED' | 'REJECTED'
+    status: Exclude<RequestStatus, 'PENDING'>
   ) => {
     setApprovalLoading(true);
 
     try {
-      await apiClient<null>(`/expenses/${expenseId}/status`, {
-        method: 'PATCH',
-        body: JSON.stringify({ status }),
-      });
-
+      await expenseService.updateStatus(expenseId, { status });
       setSelectedExpense(null);
       await loadExpenses();
     } catch {
@@ -71,28 +102,48 @@ export const ExpensesPage = () => {
     }
   };
 
+  const tabs = useMemo(() => {
+    if (!teamLead) return [];
+
+    return [
+      { label: 'Onay Talepleri', value: 'subordinates' as const },
+      { label: 'Benim Taleplerim', value: 'mine' as const },
+    ];
+  }, [teamLead]);
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-2xl font-black text-on-surface">Masraflar</h1>
+          <h1 className="text-2xl font-black text-on-surface">Masraf Yönetimi</h1>
 
           <p className="text-sm text-on-surface-variant">
-            {isManager
-              ? 'Bağlı personelinizin masraf taleplerini görüntüleyebilirsiniz.'
+            {view === 'subordinates'
+              ? user?.role === 'ROLE_GM'
+                ? 'Organizasyon içindeki masraf taleplerini görüntüleyebilir ve yönetebilirsiniz.'
+                : 'Bağlı personelinizin masraf taleplerini görüntüleyebilir ve yönetebilirsiniz.'
               : 'Kendi masraf taleplerinizi görüntüleyebilir ve yeni talep oluşturabilirsiniz.'}
           </p>
         </div>
 
-        {!isManager && (
-          <button
-            onClick={() => setIsCreateOpen(true)}
-            className="px-5 py-3 rounded-2xl bg-primary text-white font-black flex items-center gap-2 hover:bg-surface-tint"
-          >
-            <Plus size={18} />
-            Yeni Masraf
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-3">
+          {teamLead && (
+            <ViewTabs<ExpenseView>
+              value={view}
+              items={tabs}
+              onChange={setView}
+            />
+          )}
+          {canCreate && view === 'mine' && !gm && (
+            <button
+              onClick={() => setIsCreateOpen(true)}
+              className="px-5 py-3 rounded-2xl bg-primary text-white font-black flex items-center gap-2 hover:bg-surface-tint"
+            >
+              <Plus size={18} />
+              Yeni Masraf
+            </button>
+          )}
+        </div>
       </div>
 
       <section className="bg-white rounded-[2rem] border border-outline-variant/20 shadow-sm overflow-hidden">
@@ -119,25 +170,19 @@ export const ExpensesPage = () => {
             </thead>
 
             <tbody>
-              {loading && (
-                <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-on-surface-variant">
-                    Yükleniyor...
-                  </td>
-                </tr>
-              )}
-
-              {!loading && expenses.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-on-surface-variant">
-                    Masraf talebi bulunamadı.
-                  </td>
-                </tr>
-              )}
+              <DataState
+                loading={loading}
+                empty={!loading && expenses.length === 0}
+                emptyText="Masraf talebi bulunamadı."
+                colSpan={5}
+              />
 
               {!loading &&
                 expenses.map((expense) => (
-                  <tr key={expense.id} className="border-t border-outline-variant/10">
+                  <tr
+                    key={expense.id}
+                    className="border-t border-outline-variant/10"
+                  >
                     <td className="px-6 py-4">
                       <div className="flex items-start gap-3">
                         <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
@@ -145,9 +190,11 @@ export const ExpensesPage = () => {
                         </div>
 
                         <div>
-                          <p className="font-bold text-on-surface">{expense.description}</p>
+                          <p className="font-bold text-on-surface">
+                            {expense.description}
+                          </p>
 
-                          {isManager && (
+                          {view === 'subordinates' && (
                             <p className="text-xs text-on-surface-variant mt-1">
                               Talep sahibi: {expense.employeeFullName}
                             </p>
@@ -194,7 +241,7 @@ export const ExpensesPage = () => {
         isOpen={!!selectedExpense}
         type="EXPENSE"
         item={selectedExpense}
-        canAct={isManager}
+        canAct={selectedCanAct}
         loading={approvalLoading}
         onClose={() => setSelectedExpense(null)}
         onApprove={() =>
@@ -205,20 +252,5 @@ export const ExpensesPage = () => {
         }
       />
     </div>
-  );
-};
-
-const StatusBadge = ({ status }: { status: string }) => {
-  const className =
-    status === 'APPROVED'
-      ? 'bg-success/10 text-success border-success/20'
-      : status === 'REJECTED'
-        ? 'bg-error/10 text-error border-error/20'
-        : 'bg-warning/10 text-warning border-warning/20';
-
-  return (
-    <span className={`inline-flex px-3 py-1 rounded-full border text-xs font-black ${className}`}>
-      {getStatusLabel(status)}
-    </span>
   );
 };

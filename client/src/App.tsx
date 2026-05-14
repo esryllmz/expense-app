@@ -1,13 +1,7 @@
-import { AppRouter } from "../src/routes/AppRouter";
+import { AppRouter } from './routes/AppRouter';
 
-/**
- * App: Artık sadece yönlendirme katmanından sorumludur.
- * Tüm sağlayıcılar AppProvider üzerinden yönetilmektedir.
- */
 function App() {
-  return (
-    <AppRouter />
-  );
+  return <AppRouter />;
 }
 
 export default App;

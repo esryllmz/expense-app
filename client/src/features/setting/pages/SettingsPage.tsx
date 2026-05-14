@@ -1,15 +1,15 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { Lock, Save } from 'lucide-react';
+import { toast } from 'react-toastify';
 import { useDispatch, useSelector } from 'react-redux';
-import { Save, Lock } from 'lucide-react';
 import type { RootState } from '../../../core/store/store';
-import { apiClient } from '../../../core/api/apiClient';
-import { setCredentials } from '../../auth/store/authSlice';
+import { setUser } from '../../auth/store/authSlice';
+import { userService } from '../services/userService';
 
 export const SettingsPage = () => {
   const dispatch = useDispatch();
 
   const user = useSelector((state: RootState) => state.auth.user);
-  const accessToken = useSelector((state: RootState) => state.auth.token);
 
   const [profileLoading, setProfileLoading] = useState(false);
   const [passwordLoading, setPasswordLoading] = useState(false);
@@ -25,33 +25,44 @@ export const SettingsPage = () => {
     confirmNewPassword: '',
   });
 
+  useEffect(() => {
+    setProfileForm({
+      firstName: user?.firstName || '',
+      lastName: user?.lastName || '',
+    });
+  }, [user?.firstName, user?.lastName]);
+
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const firstName = profileForm.firstName.trim();
+    const lastName = profileForm.lastName.trim();
+
+    if (!firstName || !lastName) {
+      toast.error('Ad ve soyad alanları boş olamaz.');
+      return;
+    }
 
     setProfileLoading(true);
 
     try {
-      const response = await apiClient<null>('/users/profile', {
-        method: 'PUT',
-        body: JSON.stringify({
-          firstName: profileForm.firstName.trim(),
-          lastName: profileForm.lastName.trim(),
-        }),
+      const response = await userService.updateProfile({
+        firstName,
+        lastName,
       });
 
       if (response.success && user) {
-        const updatedUser = {
-          ...user,
-          firstName: profileForm.firstName.trim(),
-          lastName: profileForm.lastName.trim(),
-        };
-
-        dispatch(
-          setCredentials({
-            user: updatedUser,
-            accessToken: accessToken || localStorage.getItem('accessToken') || '',
-          })
-        );
+        if (response.data && 'id' in response.data) {
+          dispatch(setUser(response.data));
+        } else {
+          dispatch(
+            setUser({
+              ...user,
+              firstName,
+              lastName,
+            })
+          );
+        }
       }
     } catch {
       // apiClient toast gösteriyor.
@@ -63,16 +74,27 @@ export const SettingsPage = () => {
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (
+      !passwordForm.currentPassword ||
+      !passwordForm.newPassword ||
+      !passwordForm.confirmNewPassword
+    ) {
+      toast.error('Şifre alanları boş olamaz.');
+      return;
+    }
+
+    if (passwordForm.newPassword !== passwordForm.confirmNewPassword) {
+      toast.error('Yeni şifre ve tekrar şifre eşleşmiyor.');
+      return;
+    }
+
     setPasswordLoading(true);
 
     try {
-      const response = await apiClient<null>('/users/change-password', {
-        method: 'PATCH',
-        body: JSON.stringify({
-          currentPassword: passwordForm.currentPassword,
-          newPassword: passwordForm.newPassword,
-          confirmNewPassword: passwordForm.confirmNewPassword,
-        }),
+      const response = await userService.changePassword({
+        currentPassword: passwordForm.currentPassword,
+        newPassword: passwordForm.newPassword,
+        confirmNewPassword: passwordForm.confirmNewPassword,
       });
 
       if (response.success) {
@@ -98,7 +120,9 @@ export const SettingsPage = () => {
           </div>
 
           <div>
-            <h2 className="text-lg font-black text-on-surface">Kişisel Detaylar</h2>
+            <h2 className="text-lg font-black text-on-surface">
+              Kişisel Detaylar
+            </h2>
             <p className="text-sm text-on-surface-variant">
               Ad ve soyad bilgilerinizi güncelleyebilirsiniz.
             </p>
@@ -162,9 +186,12 @@ export const SettingsPage = () => {
           </div>
 
           <div>
-            <h2 className="text-lg font-black text-on-surface">Güvenlik ve Şifre</h2>
+            <h2 className="text-lg font-black text-on-surface">
+              Güvenlik ve Şifre
+            </h2>
             <p className="text-sm text-on-surface-variant">
-              Şifreniz en az 8 karakter, bir büyük harf, bir küçük harf ve bir rakam içermelidir.
+              Şifreniz en az 8 karakter, bir büyük harf, bir küçük harf ve bir
+              rakam içermelidir.
             </p>
           </div>
         </div>

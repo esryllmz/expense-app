@@ -1,6 +1,6 @@
 package com.qoex.expense_app.service.impl;
 
-import com.qoex.expense_app.core.exceptions.BusinessException;
+import com.qoex.expense_app.exceptions.BusinessException;
 import com.qoex.expense_app.core.responses.ApiResponse;
 import com.qoex.expense_app.dto.request.User.ChangePasswordRequest;
 import com.qoex.expense_app.dto.request.User.UpdateUserRequest;
@@ -39,7 +39,9 @@ public class UserServiceImpl implements IUserService {
 
     @Override
     @Transactional(readOnly = true)
-    public ApiResponse<UserResponseDto> getById(Long id) {
+    public ApiResponse<UserResponseDto> getById(Long id, Long currentUserId, String role) {
+        businessRules.userMustBeOwnerOrGm(id, currentUserId, role);
+
         User user = businessRules.getUserIfExists(id);
 
         return ApiResponse.success(

@@ -1,9 +1,9 @@
 package com.qoex.expense_app.service.impl;
 
-import com.qoex.expense_app.core.events.ExpenseCreatedEvent;
 import com.qoex.expense_app.dto.request.Expense.CreateExpenseRequest;
 import com.qoex.expense_app.dto.request.Expense.UpdateExpenseStatusRequest;
 import com.qoex.expense_app.dto.response.ExpenseResponseDto;
+import com.qoex.expense_app.events.ExpenseCreatedEvent;
 import com.qoex.expense_app.model.Expense;
 import com.qoex.expense_app.model.User;
 import com.qoex.expense_app.core.enums.RequestStatus;
@@ -11,7 +11,7 @@ import com.qoex.expense_app.core.enums.UserRole;
 import com.qoex.expense_app.repository.ExpenseRepository;
 import com.qoex.expense_app.repository.UserRepository;
 import com.qoex.expense_app.service.IExpenseService;
-import com.qoex.expense_app.core.exceptions.NotFoundException;
+import com.qoex.expense_app.exceptions.NotFoundException;
 import com.qoex.expense_app.core.responses.ApiResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -20,6 +20,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import com.qoex.expense_app.service.rules.ExpenseBusinessRules;
+import com.qoex.expense_app.service.rules.RequestApprovalRules;
 
 @Service
 @RequiredArgsConstructor
@@ -28,6 +29,7 @@ public class ExpenseServiceImpl implements IExpenseService {
 
     private final ExpenseRepository expenseRepository;
     private final ExpenseBusinessRules businessRules;
+    private final RequestApprovalRules approvalRules;
     private final ApplicationEventPublisher eventPublisher; // Event fırlatmak için
     private final UserRepository userRepository;
 
@@ -36,6 +38,8 @@ public class ExpenseServiceImpl implements IExpenseService {
     public ApiResponse<ExpenseResponseDto> create(CreateExpenseRequest request, Long employeeId) {
         User employee = userRepository.findById(employeeId)
                 .orElseThrow(() -> new NotFoundException("Kullanıcı bulunamadı."));
+
+        approvalRules.employeeMustHaveManager(employee);
 
         Expense expense = new Expense();
         expense.setDescription(request.description());
@@ -64,9 +68,11 @@ public class ExpenseServiceImpl implements IExpenseService {
     @Override
     @Transactional(readOnly = true)
     public ApiResponse<List<ExpenseResponseDto>> getMyExpenses(Long employeeId) {
-        // KURAL: Çalışan sadece kendi taleplerini görür
         List<ExpenseResponseDto> expenses = expenseRepository.findAllByEmployeeId(employeeId)
-                .stream().map(ExpenseResponseDto::fromEntity).toList();
+                .stream()
+                .map(ExpenseResponseDto::fromEntity)
+                .toList();
+
         return ApiResponse.success(expenses, "Masraflarınız listelendi.", 200);
     }
 

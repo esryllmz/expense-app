@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { X, Send } from 'lucide-react';
-import { apiClient } from '../../../core/api/apiClient';
+import { Send, X } from 'lucide-react';
+import { toast } from 'react-toastify';
+import { getTodayInputValue } from '../../../core/utils/formatters';
+import { leaveService } from '../services/leaveService';
 
 interface LeaveModalProps {
   isOpen: boolean;
@@ -10,6 +12,8 @@ interface LeaveModalProps {
 
 export const LeaveModal = ({ isOpen, onClose, onSuccess }: LeaveModalProps) => {
   const [loading, setLoading] = useState(false);
+
+  const today = getTodayInputValue();
 
   const [formData, setFormData] = useState({
     startDate: '',
@@ -35,31 +39,35 @@ export const LeaveModal = ({ isOpen, onClose, onSuccess }: LeaveModalProps) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.description.trim()) {
-      alert('Açıklama alanı boş olamaz.');
+    const description = formData.description.trim();
+
+    if (!description) {
+      toast.error('Açıklama alanı boş olamaz.');
       return;
     }
 
     if (!formData.startDate || !formData.endDate) {
-      alert('Başlangıç ve bitiş tarihi seçilmelidir.');
+      toast.error('Başlangıç ve bitiş tarihi seçilmelidir.');
+      return;
+    }
+
+    if (formData.startDate < today) {
+      toast.error('Geçmiş tarih için izin talebi oluşturulamaz.');
       return;
     }
 
     if (formData.endDate < formData.startDate) {
-      alert('Bitiş tarihi başlangıç tarihinden önce olamaz.');
+      toast.error('Bitiş tarihi başlangıç tarihinden önce olamaz.');
       return;
     }
 
     setLoading(true);
 
     try {
-      const response = await apiClient<null>('/leaves', {
-        method: 'POST',
-        body: JSON.stringify({
-          description: formData.description.trim(),
-          startDate: formData.startDate,
-          endDate: formData.endDate,
-        }),
+      const response = await leaveService.create({
+        description,
+        startDate: formData.startDate,
+        endDate: formData.endDate,
       });
 
       if (response.success) {
@@ -100,14 +108,21 @@ export const LeaveModal = ({ isOpen, onClose, onSuccess }: LeaveModalProps) => {
               <input
                 type="date"
                 required
+                min={today}
                 value={formData.startDate}
                 className="w-full px-5 py-4 rounded-2xl border border-outline-variant bg-surface-container-lowest focus:ring-4 focus:ring-primary/10 focus:border-primary outline-none transition-all font-bold text-sm"
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    startDate: e.target.value,
-                  })
-                }
+                onChange={(e) => {
+                  const nextStartDate = e.target.value;
+
+                  setFormData((prev) => ({
+                    ...prev,
+                    startDate: nextStartDate,
+                    endDate:
+                      prev.endDate && prev.endDate < nextStartDate
+                        ? nextStartDate
+                        : prev.endDate,
+                  }));
+                }}
               />
             </div>
 
@@ -119,6 +134,7 @@ export const LeaveModal = ({ isOpen, onClose, onSuccess }: LeaveModalProps) => {
               <input
                 type="date"
                 required
+                min={formData.startDate || today}
                 value={formData.endDate}
                 className="w-full px-5 py-4 rounded-2xl border border-outline-variant bg-surface-container-lowest focus:ring-4 focus:ring-primary/10 focus:border-primary outline-none transition-all font-bold text-sm"
                 onChange={(e) =>

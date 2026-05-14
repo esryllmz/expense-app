@@ -2,16 +2,14 @@ package com.qoex.expense_app.service.impl;
 
 import com.qoex.expense_app.config.JwtProperties;
 import com.qoex.expense_app.core.enums.UserRole;
-import com.qoex.expense_app.core.exceptions.BusinessException;
-import com.qoex.expense_app.core.exceptions.NotFoundException;
 import com.qoex.expense_app.core.responses.ApiResponse;
-import com.qoex.expense_app.core.security.JwtService;
 import com.qoex.expense_app.dto.request.User.LoginRequestDto;
 import com.qoex.expense_app.dto.request.User.RegisterRequestDto;
 import com.qoex.expense_app.dto.response.TokenResponseDto;
 import com.qoex.expense_app.dto.response.UserResponseDto;
 import com.qoex.expense_app.model.User;
 import com.qoex.expense_app.repository.UserRepository;
+import com.qoex.expense_app.security.JwtService;
 import com.qoex.expense_app.service.IAuthenticationService;
 import com.qoex.expense_app.service.rules.UserBusinessRules;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +17,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.qoex.expense_app.exceptions.BusinessException;
+import com.qoex.expense_app.exceptions.NotFoundException;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -60,6 +60,18 @@ public class AuthenticationServiceImpl implements IAuthenticationService {
         log.info("Kullanıcı giriş yaptı: {}", user.getEmail());
 
         return ApiResponse.success(tokenResponse, "Giriş başarılı.", 200);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ApiResponse<UserResponseDto> me(Long currentUserId) {
+        User user = userRepository.findById(currentUserId)
+                .orElseThrow(() -> new NotFoundException("Kullanıcı bulunamadı."));
+
+        return ApiResponse.success(
+                UserResponseDto.fromEntity(user),
+                "Aktif kullanıcı bilgisi getirildi.",
+                200);
     }
 
     @Override

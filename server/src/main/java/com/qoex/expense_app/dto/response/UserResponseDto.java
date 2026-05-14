@@ -8,7 +8,9 @@ public record UserResponseDto(
         String lastName,
         String email,
         String role,
-        String managerName) {
+        Long managerId,
+        String managerName
+) {
     public static UserResponseDto fromEntity(User user) {
         return new UserResponseDto(
                 user.getId(),
@@ -16,7 +18,10 @@ public record UserResponseDto(
                 user.getLastName(),
                 user.getEmail(),
                 user.getRole().name(),
-                user.getManager() != null ? user.getManager().getFirstName() + " " + user.getManager().getLastName()
-                        : "Üst Yönetim");
+                user.getManager() != null ? user.getManager().getId() : null,
+                user.getManager() != null
+                        ? user.getManager().getFirstName() + " " + user.getManager().getLastName()
+                        : null
+        );
     }
 }

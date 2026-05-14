@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { X, Send } from 'lucide-react';
-import { apiClient } from '../../../core/api/apiClient';
+import { Send, X } from 'lucide-react';
+import { toast } from 'react-toastify';
+import { expenseService } from '../services/expenseService';
 
 interface ExpenseModalProps {
   isOpen: boolean;
@@ -8,7 +9,11 @@ interface ExpenseModalProps {
   onSuccess: () => void;
 }
 
-export const ExpenseModal = ({ isOpen, onClose, onSuccess }: ExpenseModalProps) => {
+export const ExpenseModal = ({
+  isOpen,
+  onClose,
+  onSuccess,
+}: ExpenseModalProps) => {
   const [loading, setLoading] = useState(false);
 
   const [formData, setFormData] = useState({
@@ -33,25 +38,25 @@ export const ExpenseModal = ({ isOpen, onClose, onSuccess }: ExpenseModalProps) 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.description.trim()) {
-      alert('Açıklama alanı boş olamaz.');
+    const description = formData.description.trim();
+    const amount = Number(formData.amount);
+
+    if (!description) {
+      toast.error('Açıklama alanı boş olamaz.');
       return;
     }
 
-    if (!formData.amount || Number(formData.amount) <= 0) {
-      alert('Tutar 0’dan büyük olmalıdır.');
+    if (!formData.amount || Number.isNaN(amount) || amount <= 0) {
+      toast.error('Tutar 0’dan büyük olmalıdır.');
       return;
     }
 
     setLoading(true);
 
     try {
-      const response = await apiClient('/expenses', {
-        method: 'POST',
-        body: JSON.stringify({
-          description: formData.description.trim(),
-          amount: Number(formData.amount),
-        }),
+      const response = await expenseService.create({
+        description,
+        amount,
       });
 
       if (response.success) {
@@ -111,6 +116,7 @@ export const ExpenseModal = ({ isOpen, onClose, onSuccess }: ExpenseModalProps) 
               required
               type="number"
               step="0.01"
+              min="0.01"
               value={formData.amount}
               onChange={(e) =>
                 setFormData({

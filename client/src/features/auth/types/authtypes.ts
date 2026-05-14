@@ -6,7 +6,8 @@ export interface User {
   firstName: string;
   lastName: string;
   role: UserRole;
-  managerName?: string;
+  managerId?: number | null;
+  managerName?: string | null;
 }
 
 export interface AuthResponse {

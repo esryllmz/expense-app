@@ -1,12 +1,13 @@
 package com.qoex.expense_app.controller;
 
 import com.qoex.expense_app.core.responses.ApiResponse;
-import com.qoex.expense_app.core.utils.SecurityUtils;
 import com.qoex.expense_app.dto.request.User.UpdateUserRequest;
 import com.qoex.expense_app.dto.request.User.AssignManagerRequest;
 import com.qoex.expense_app.dto.request.User.ChangePasswordRequest;
 import com.qoex.expense_app.dto.response.UserResponseDto;
 import com.qoex.expense_app.service.IUserService;
+import com.qoex.expense_app.utils.SecurityUtils;
+
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -30,7 +31,10 @@ public class UsersController {
 
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<UserResponseDto>> getById(@PathVariable Long id) {
-        return ResponseEntity.ok(userService.getById(id));
+        Long currentUserId = SecurityUtils.getCurrentUserId();
+        String role = SecurityUtils.getCurrentUserRole();
+
+        return ResponseEntity.ok(userService.getById(id, currentUserId, role));
     }
 
     @PutMapping("/profile")

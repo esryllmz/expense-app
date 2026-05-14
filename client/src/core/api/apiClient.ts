@@ -1,27 +1,197 @@
 import { toast } from 'react-toastify';
 import type { AuthResponse } from '../../features/auth/types/authtypes';
 import type { ApiResponse } from '../types/ApiResponse';
+import { sessionStorageService } from '../auth/sessionStorage';
 
 const BASE_URL = 'http://localhost:8080/api/v1';
+
+let isRefreshing = false;
+
+type WaitingRequest = {
+  resolve: (token: string) => void;
+  reject: (error: unknown) => void;
+};
+
+let waitingRequests: WaitingRequest[] = [];
+
+const isAuthEndpoint = (endpoint: string) => {
+  return (
+    endpoint.includes('/auth/login') ||
+    endpoint.includes('/auth/register') ||
+    endpoint.includes('/auth/refresh-token')
+  );
+};
+
+const processWaitingRequests = (error: unknown, token: string | null) => {
+  waitingRequests.forEach((request) => {
+    if (error) {
+      request.reject(error);
+      return;
+    }
+
+    if (token) {
+      request.resolve(token);
+    }
+  });
+
+  waitingRequests = [];
+};
+
+const waitForRefreshToken = (): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    waitingRequests.push({ resolve, reject });
+  });
+};
+
+const parseResponse = async <T>(response: Response): Promise<ApiResponse<T>> => {
+  const responseText = await response.text();
+
+  if (!responseText) {
+    return {
+      success: response.ok,
+      message: '',
+      data: null,
+      statusCode: response.status,
+    };
+  }
+
+  try {
+    return JSON.parse(responseText) as ApiResponse<T>;
+  } catch {
+    return {
+      success: false,
+      message: 'Sunucudan geçersiz cevap döndü.',
+      data: null,
+      statusCode: response.status,
+    };
+  }
+};
+
+export const clearSessionAndRedirect = () => {
+  sessionStorageService.clearSession();
+
+  if (window.location.pathname !== '/') {
+    window.location.replace('/');
+  }
+};
+
+const handleApiError = (errorResponse: ApiResponse<unknown>) => {
+  const message = errorResponse.message;
+
+  switch (errorResponse.statusCode) {
+    case 400:
+      toast.error(message || 'Validasyon hatası oluştu.');
+      break;
+    case 401:
+      toast.error(message || 'Oturum süresi doldu.');
+      break;
+    case 403:
+      toast.error(message || 'Bu işlem için yetkiniz bulunmamaktadır.');
+      break;
+    case 404:
+      toast.error(message || 'İstenilen kaynak bulunamadı.');
+      break;
+    case 500:
+      toast.error('Sunucu tarafında bir hata oluştu.');
+      break;
+    default:
+      toast.error(message || 'Beklenmedik bir hata oluştu.');
+      break;
+  }
+};
+
+const refreshAccessToken = async (): Promise<string> => {
+  const refreshToken = sessionStorageService.getRefreshToken();
+
+  if (!refreshToken) {
+    throw new Error('Refresh token bulunamadı.');
+  }
+
+  const refreshResponse = await fetch(`${BASE_URL}/auth/refresh-token`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json; charset=UTF-8',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({ refreshToken }),
+  });
+
+  const refreshResult = await parseResponse<AuthResponse>(refreshResponse);
+
+  if (!refreshResponse.ok || !refreshResult.success || !refreshResult.data) {
+    throw new Error(refreshResult.message || 'Oturum yenilenemedi.');
+  }
+
+  sessionStorageService.setSession({
+    accessToken: refreshResult.data.accessToken,
+    refreshToken: refreshResult.data.refreshToken,
+    user: refreshResult.data.user,
+  });
+
+  return refreshResult.data.accessToken;
+};
+
+const retryRequestAfterRefresh = async (
+  endpoint: string,
+  config: RequestInit,
+  headers: Record<string, string>
+): Promise<Response> => {
+  if (!sessionStorageService.getRefreshToken()) {
+    clearSessionAndRedirect();
+    throw new Error('Oturum süresi doldu.');
+  }
+
+  if (isRefreshing) {
+    const newAccessToken = await waitForRefreshToken();
+
+    return fetch(`${BASE_URL}${endpoint}`, {
+      ...config,
+      headers: {
+        ...headers,
+        Authorization: `Bearer ${newAccessToken}`,
+      },
+    });
+  }
+
+  isRefreshing = true;
+
+  try {
+    const newAccessToken = await refreshAccessToken();
+
+    processWaitingRequests(null, newAccessToken);
+
+    return fetch(`${BASE_URL}${endpoint}`, {
+      ...config,
+      headers: {
+        ...headers,
+        Authorization: `Bearer ${newAccessToken}`,
+      },
+    });
+  } catch (error) {
+    processWaitingRequests(error, null);
+    clearSessionAndRedirect();
+    throw error;
+  } finally {
+    isRefreshing = false;
+  }
+};
 
 export const apiClient = async <T>(
   endpoint: string,
   options: RequestInit = {}
 ): Promise<ApiResponse<T>> => {
-  const token = localStorage.getItem('accessToken');
-
-  const isAuthEndpoint =
-    endpoint.includes('/auth/login') ||
-    endpoint.includes('/auth/register') ||
-    endpoint.includes('/auth/refresh-token');
+  const token = sessionStorageService.getAccessToken();
+  const authEndpoint = isAuthEndpoint(endpoint);
 
   const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
+    Accept: 'application/json',
+    ...(options.body
+      ? { 'Content-Type': 'application/json; charset=UTF-8' }
+      : {}),
     ...(options.headers as Record<string, string>),
   };
 
-  // Login, register ve refresh-token public endpoint olduğu için eski token göndermiyoruz.
-  if (token && !isAuthEndpoint) {
+  if (token && !authEndpoint) {
     headers.Authorization = `Bearer ${token}`;
   }
 
@@ -33,106 +203,33 @@ export const apiClient = async <T>(
   try {
     let response = await fetch(`${BASE_URL}${endpoint}`, config);
 
-    // Access token süresi dolduysa refresh token ile yenile.
-    if (response.status === 401 && !endpoint.includes('/auth/refresh-token')) {
-      const refreshToken = localStorage.getItem('refreshToken');
-
-      if (!refreshToken) {
-        handleLogout();
-        throw new Error('Oturum süresi doldu.');
-      }
-
-      const refreshResponse = await fetch(`${BASE_URL}/auth/refresh-token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
-      });
-
-      if (!refreshResponse.ok) {
-        handleLogout();
-        throw new Error('Oturum süresi doldu.');
-      }
-
-      const refreshResult: ApiResponse<AuthResponse> = await refreshResponse.json();
-
-      if (!refreshResult.success || !refreshResult.data) {
-        handleLogout();
-        throw new Error(refreshResult.message || 'Oturum yenilenemedi.');
-      }
-
-      localStorage.setItem('accessToken', refreshResult.data.accessToken);
-      localStorage.setItem('refreshToken', refreshResult.data.refreshToken);
-      localStorage.setItem('user', JSON.stringify(refreshResult.data.user));
-
-      const retryHeaders = {
-        ...headers,
-        Authorization: `Bearer ${refreshResult.data.accessToken}`,
-      };
-
-      response = await fetch(`${BASE_URL}${endpoint}`, {
-        ...config,
-        headers: retryHeaders,
-      });
+    if (response.status === 401 && !authEndpoint) {
+      response = await retryRequestAfterRefresh(endpoint, config, headers);
     }
 
-    const responseText = await response.text();
-
-    const result: ApiResponse<T> = responseText
-      ? JSON.parse(responseText)
-      : {
-          success: response.ok,
-          message: '',
-          data: null,
-          statusCode: response.status,
-        };
+    const result = await parseResponse<T>(response);
 
     if (!response.ok || result.success === false) {
       handleApiError(result);
       throw result;
     }
 
-    if (options.method && options.method !== 'GET' && result.message) {
+    const method = options.method?.toUpperCase();
+
+    if (method && method !== 'GET' && result.message) {
       toast.success(result.message);
     }
 
     return result;
-  } catch (error: any) {
+  } catch (error: unknown) {
     if (error && typeof error === 'object' && 'success' in error) {
       throw error;
     }
 
-    const errorMessage = error instanceof Error ? error.message : 'Sunucu hatası.';
+    const errorMessage =
+      error instanceof Error ? error.message : 'Sunucu hatası.';
+
     toast.error(errorMessage);
     throw error;
-  }
-};
-
-const handleLogout = () => {
-  localStorage.removeItem('user');
-  localStorage.removeItem('accessToken');
-  localStorage.removeItem('refreshToken');
-
-  window.location.href = '/';
-};
-
-const handleApiError = (errorResponse: ApiResponse<any>) => {
-  const message = errorResponse.message;
-
-  switch (errorResponse.statusCode) {
-    case 400:
-      toast.error(message || 'Validasyon hatası oluştu.');
-      break;
-    case 403:
-      toast.error('Bu işlem için yetkiniz bulunmamaktadır.');
-      break;
-    case 404:
-      toast.error('İstenilen kaynak bulunamadı.');
-      break;
-    case 500:
-      toast.error('Sunucu tarafında bir hata oluştu.');
-      break;
-    default:
-      toast.error(message || 'Beklenmedik bir hata oluştu.');
-      break;
   }
 };

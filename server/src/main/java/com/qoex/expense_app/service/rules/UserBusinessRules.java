@@ -4,9 +4,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
 import com.qoex.expense_app.core.enums.UserRole;
-import com.qoex.expense_app.core.exceptions.BusinessException;
-import com.qoex.expense_app.core.exceptions.ForbiddenException;
-import com.qoex.expense_app.core.exceptions.NotFoundException;
+import com.qoex.expense_app.exceptions.BusinessException;
+import com.qoex.expense_app.exceptions.ForbiddenException;
+import com.qoex.expense_app.exceptions.NotFoundException;
 import com.qoex.expense_app.model.User;
 import com.qoex.expense_app.repository.UserRepository;
 
@@ -37,7 +37,6 @@ public class UserBusinessRules {
 
     public void userMustBeOwnerOrGm(Long targetId, Long currentUserId, String role) {
         if (!targetId.equals(currentUserId) && !role.equals("ROLE_GM")) {
-            log.error("Yetkisiz erişim denemesi: {}", currentUserId);
             throw new ForbiddenException("Bu işlem için yetkiniz bulunmamaktadır.");
         }
     }
