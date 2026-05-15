@@ -16,8 +16,8 @@ import {
   formatDateRange,
   getStatusLabel,
 } from '../../core/utils/formatters';
-import type { Expense } from '../../features/expenses/types/expenseTypes';
-import type { Leave } from '../../features/leaves/types/leaveTypes';
+import type { Expense } from '../../features/expense/types/expenseTypes';
+import type { Leave } from '../../features/leave/types/leaveTypes';
 
 type ApprovalType = 'EXPENSE' | 'LEAVE';
 type ApprovalItem = Expense | Leave;

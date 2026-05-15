@@ -1,5 +1,5 @@
 import type { UserRole } from '../../features/auth/types/authTypes';
-import type { RequestStatus } from '../../features/expenses/types/expenseTypes';
+import type { RequestStatus } from '../../features/expense/types/expenseTypes';
 
 export const canManageRequests = (role?: UserRole | null) =>
   role === 'ROLE_GM' || role === 'ROLE_TEAM_LEADER';

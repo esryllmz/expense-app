@@ -30,6 +30,10 @@ public class DataInitializer implements CommandLineRunner {
     @Override
     public void run(String... args) {
         if (userRepository.count() == 0) {
+
+            // private final PasswordEncoder passwordEncoder;
+            // String defaultPass = passwordEncoder.encode("123456");
+
             String defaultPass = HashingHelper.createPasswordHash("123456");
 
             // --- 1. ORGANİZASYON HİYERARŞİSİ ---

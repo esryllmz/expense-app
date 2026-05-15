@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { colors } from '../../core/theme/colors';
 import { getStatusLabel } from '../../core/utils/formatters';
-import type { RequestStatus } from '../../features/expenses/types/expenseTypes';
+import type { RequestStatus } from '../../features/expense/types/expenseTypes';
 
 export const StatusBadge = ({ status }: { status: RequestStatus }) => {
   const config = getStatusConfig(status);
